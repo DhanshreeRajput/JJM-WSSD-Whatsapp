@@ -1,0 +1,36 @@
+# OPTIMIZED REQUIREMENTS FOR FAST WHATSAPP AI
+
+# Core FastAPI and server
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.3
+
+# Redis for fast caching and rate limiting
+redis==5.0.1
+
+# Environment and utilities
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Document processing
+PyPDF2==3.0.1
+
+# Machine learning (optimized versions)
+scikit-learn==1.4.0
+numpy==1.26.3
+
+# LangChain with community integrations (for RAG)
+langchain==0.1.0
+langchain-community==0.0.10
+
+# Language detection (fast and lightweight)
+langdetect==1.0.9
+langid==1.1.6
+
+# Optional: Audio processing (only if needed)
+openai-whisper==20231117
+librosa==0.10.1
+soundfile==0.12.1
+
+# Optional: System monitoring
+psutil==5.9.6
