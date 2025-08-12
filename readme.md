@@ -12,7 +12,7 @@ JJM-WSSD_Whatsapp/
 ├── .env                 # Environment variables
 ├── docker-compose.yml   # Docker Compose config
 ├── jjm-ai_11082025.pgsql# SQL script to import
-└── README.md            # This file
+└── README.md            
 ```
 
 ---
