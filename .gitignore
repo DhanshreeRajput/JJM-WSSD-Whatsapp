@@ -1,6 +1,5 @@
 .env
-vsenv
-.venv
+venv
 __pycache__/
 jjm
 jjm-ai_11082025.pgsql

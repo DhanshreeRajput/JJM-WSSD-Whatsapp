@@ -1,343 +1,434 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Request
+"""
+INTEGRATED WHATSAPP AI BOT WITH POSTGRESQL AND OLLAMA
+Combines SQL querying capabilities with WhatsApp messaging
+"""
+
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
-import time
+import asyncpg
+import requests
 import os
 import logging
-import re
-import requests
-import PyPDF2
-import hashlib
-from contextlib import asynccontextmanager
-import io
-
-# Environment setup
 from dotenv import load_dotenv
+import re
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain_core.messages import SystemMessage
+from langchain_community.utilities import SQLDatabase
+from langgraph.prebuilt import create_react_agent
+from langchain_ollama import ChatOllama
+from langgraph.graph import MessagesState
+
+# Load environment variables
 load_dotenv()
 
 # Configuration
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-MODEL_NAME = os.getenv("MODEL_NAME", "llama3.1:8b")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "admin")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "root@123")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "wssd")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+
+DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID") 
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
+
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="WhatsApp AI Bot with SQL Capabilities")
 
 # Global variables
-KNOWLEDGE_BASE = []
-PROCESSED_MESSAGES = set()
+processed_messages = set()
 
-# Simple cache
-cache = {}
-
-def detect_language(text: str) -> str:
-    """Simple language detection"""
-    text = text.strip().lower()
-    
-    # Hindi indicators
-    hindi_words = ['ke baare', 'dijiye', 'jankari', 'kaise', 'batao', 'mujhe', 'chahiye', 'है', 'आप', 'मुझे', 'जानकारी']
-    # Marathi indicators
-    marathi_words = ['baddal', 'mahiti', 'dya', 'kay ahe', 'mhje', 'kasa', 'tumhi', 'mala', 'आहे', 'तुम्ही', 'माहिती']
-    
-    hindi_count = sum(1 for word in hindi_words if word in text)
-    marathi_count = sum(1 for word in marathi_words if word in text)
-    
-    if hindi_count > 0:
-        return 'hi'
-    elif marathi_count > 0:
-        return 'mr'
-    else:
-        return 'en'
-
-def search_knowledge_base(query: str, language: str) -> str:
-    """Simple direct search in knowledge base"""
-    if not KNOWLEDGE_BASE:
-        responses = {
-            'en': "No knowledge base available. Please upload documents first.\n\n**For more details, please contact the 104/102 helpline numbers.**",
-            'hi': "ज्ञान आधार उपलब्ध नहीं है। कृपया पहले दस्तावेज़ अपलोड करें।\n\n**अधिक जानकारी के लिए कृपया 104/102 हेल्पलाइन नंबर पर संपर्क करें।**",
-            'mr': "ज्ञान आधार उपलब्ध नाही. कृपया प्रथम कागदपत्रे अपलोड करा.\n\n**अधिक माहितीसाठी, कृपया 104/102 हेल्पलाइन क्रमांकावर संपर्क साधा.**"
-        }
-        return responses.get(language, responses['en'])
-    
-    # Search for query terms in knowledge base
-    query_lower = query.lower()
-    search_terms = ['jssk', 'cgis', 'esic', 'scheme', 'yojana', 'apply', 'application', 'eligibility']
-    
-    relevant_content = []
-    for doc in KNOWLEDGE_BASE:
-        content = doc.get('content', '').lower()
-        if any(term in content for term in search_terms if term in query_lower):
-            relevant_content.append(doc.get('content', ''))
-    
-    if not relevant_content:
-        responses = {
-            'en': "Information about this topic is not available in the knowledge base. Please contact 104/102 helpline for assistance.",
-            'hi': "इस विषय की जानकारी ज्ञान आधार में उपलब्ध नहीं है। सहायता के लिए कृपया 104/102 हेल्पलाइन से संपर्क करें।",
-            'mr': "या विषयाची माहिती ज्ञान आधारात उपलब्ध नाही. मदतीसाठी कृपया 104/102 हेल्पलाइन शी संपर्क साधा."
-        }
-        return responses.get(language, responses['en'])
-    
-    # Use Ollama to generate response from found content
-    context = "\n".join(relevant_content[:2])  # Use top 2 relevant docs
-    
-    prompts = {
-        'en': f"""Based ONLY on this context, answer the question in English:
-
-Context: {context}
-
-Question: {query}
-
-Answer in English using only the information from the context above. If the context doesn't contain the specific information requested, say "Information not available in knowledge base."
-
-Answer:""",
+class WhatsAppAIBot:
+    def __init__(self):
+        self.db_pool = None
+        self.sql_agent = None
         
-        'hi': f"""केवल इस संदर्भ के आधार पर, प्रश्न का उत्तर हिंदी में दें:
-
-संदर्भ: {context}
-
-प्रश्न: {query}
-
-केवल ऊपर दिए गए संदर्भ की जानकारी का उपयोग करके हिंदी में उत्तर दें। यदि संदर्भ में विशिष्ट जानकारी नहीं है, तो कहें "ज्ञान आधार में जानकारी उपलब्ध नहीं है।"
-
-उत्तर:""",
-        
-        'mr': f"""केवळ या संदर्भावर आधारित, प्रश्नाचे उत्तर मराठीत द्या:
-
-संदर्भ: {context}
-
-प्रश्न: {query}
-
-फक्त वरील संदर्भातील माहिती वापरून मराठीत उत्तर द्या. जर संदर्भात विशिष्ट माहिती नाही, तर सांगा "ज्ञान आधारात माहिती उपलब्ध नाही."
-
-उत्तर:"""
-    }
-    
-    prompt = prompts.get(language, prompts['en'])
-    
-    try:
-        payload = {
-            "model": MODEL_NAME,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 800,
-                "num_ctx": 2048
-            }
-        }
-        
-        response = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=30)
-        
-        if response.status_code == 200:
-            result = response.json()
-            answer = result.get("response", "").strip()
+    async def connect_database(self):
+        """Connect to PostgreSQL database"""
+        try:
+            self.db_pool = await asyncpg.create_pool(DATABASE_URL)
+            logger.info("✅ Connected to PostgreSQL database")
             
-            if answer and len(answer) > 10:
-                # Add helpline
-                helplines = {
-                    'en': "\n\n**For more details, please contact the 104/102 helpline numbers.**",
-                    'hi': "\n\n**अधिक जानकारी के लिए कृपया 104/102 हेल्पलाइन नंबर पर संपर्क करें।**",
-                    'mr': "\n\n**अधिक माहितीसाठी, कृपया 104/102 हेल्पलाइन क्रमांकावर संपर्क साधा.**"
+            # Initialize SQL agent with Ollama
+            self.initialize_sql_agent()
+            logger.info("✅ SQL Agent initialized with Ollama")
+        except Exception as e:
+            logger.error(f"❌ Database connection failed: {e}")
+            raise
+    
+    def initialize_sql_agent(self):
+        """Initialize the SQL agent with Ollama"""
+        try:
+            # Initialize Ollama LLM
+            llm = ChatOllama(
+                model="llama3.1:8b",
+                base_url=OLLAMA_BASE_URL,
+                temperature=0.1
+            )
+            
+            # Initialize database connection for SQL toolkit
+            db = SQLDatabase.from_uri(DATABASE_URL)
+            toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+            
+            tools = toolkit.get_tools()
+            
+            system_message = SystemMessage(content=self.get_sql_system_prompt())
+            
+            self.sql_agent = create_react_agent(
+                model=llm,
+                tools=tools,
+                messages_modifier=system_message
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ SQL Agent initialization failed: {e}")
+            raise
+    
+    def get_sql_system_prompt(self):
+        """Generate system prompt for SQL agent"""
+        return """
+        You are a helpful AI assistant specializing in government schemes and services data analysis.
+        You have access to a PostgreSQL database with information about districts, schemes, and services.
+        
+        When users ask questions:
+        1. If it's a greeting, respond warmly in their language
+        2. If it's a data query, use SQL to find the answer
+        3. Always provide helpful, accurate information
+        4. Support Hindi, Marathi, and English languages
+        
+        For SQL queries:
+        - Only use existing tables and columns
+        - Never make assumptions about column names
+        - Provide clear, concise answers
+        - If data isn't found, suggest alternatives or helplines
+        
+        Always end responses with: "📞 For more help: Call 104/102 helpline"
+        
+        Keep responses under 300 words for WhatsApp compatibility.
+        """
+    
+    def detect_language(self, text: str) -> str:
+        """Enhanced language detection"""
+        text = text.lower()
+        
+        # Hindi patterns
+        hindi_patterns = [
+            'योजना', 'सरकार', 'आवेदन', 'जानकारी', 'सहायता', 'लाभ',
+            'kaise', 'kya', 'yojana', 'sarkar', 'scheme'
+        ]
+        
+        # Marathi patterns
+        marathi_patterns = [
+            'योजना', 'शासन', 'अर्ज', 'माहिती', 'मदत', 'लाभ',
+            'kasa', 'kuthe', 'yojana', 'shasan'
+        ]
+        
+        if any(word in text for word in hindi_patterns):
+            return 'hi'
+        elif any(word in text for word in marathi_patterns):
+            return 'mr'
+        else:
+            return 'en'
+    
+    def is_greeting(self, text: str) -> bool:
+        """Check if message is a greeting"""
+        greetings = [
+            'hi', 'hello', 'hey', 'namaste', 'namaskar',
+            'नमस्ते', 'नमस्कार', 'हैलो', 'हाय'
+        ]
+        return any(greeting in text.lower() for greeting in greetings)
+    
+    def is_data_query(self, text: str) -> bool:
+        """Check if message requires database query"""
+        query_keywords = [
+            'show', 'list', 'find', 'search', 'how many', 'count',
+            'what', 'which', 'where', 'when', 'who',
+            'scheme', 'district', 'beneficiary', 'application',
+            'योजना', 'जिला', 'लाभार्थी', 'आवेदन',
+            'दिखाओ', 'बताओ', 'खोजो', 'कितने'
+        ]
+        return any(keyword in text.lower() for keyword in query_keywords)
+    
+    def get_greeting_response(self, language: str) -> str:
+        """Get greeting response based on language"""
+        greetings = {
+            'en': """Hello! 👋 I'm your AI assistant for government schemes and services. 
+
+I can help you with:
+• Information about government schemes
+• District-wise data
+• Eligibility criteria
+• Application processes
+
+Just ask me anything!""",
+            
+            'hi': """नमस्ते! 👋 मैं सरकारी योजनाओं की AI सहायिका हूं।
+
+मैं आपकी मदद कर सकती हूं:
+• सरकारी योजनाओं की जानकारी
+• जिलेवार डेटा
+• पात्रता मापदंड
+• आवेदन प्रक्रिया
+
+कुछ भी पूछिए!""",
+            
+            'mr': """नमस्कार! 👋 मी सरकारी योजनांची AI सहाय्यक आहे।
+
+मी तुमची मदत करू शकते:
+• सरकारी योजनांची माहिती
+• जिल्हानिहाय डेटा
+• पात्रता निकष
+• अर्ज प्रक्रिया
+
+काहीही विचारा!"""
+        }
+        
+        response = greetings.get(language, greetings['en'])
+        return response + "\n\n📞 For more help: Call 104/102 helpline"
+    
+    async def query_database_simple(self, query: str, language: str) -> str:
+        """Simple database search for non-complex queries"""
+        try:
+            async with self.db_pool.acquire() as conn:
+                # Generic search across common tables
+                search_query = """
+                SELECT * FROM (
+                    SELECT 'scheme' as type, scheme_name as title, description, details as content
+                    FROM schemes 
+                    WHERE scheme_name ILIKE $1 OR description ILIKE $1
+                    
+                    UNION ALL
+                    
+                    SELECT 'district' as type, district_name as title, '' as description, 
+                           CONCAT('Population: ', population, ', Area: ', area) as content
+                    FROM districts 
+                    WHERE district_name ILIKE $1
+                ) results
+                LIMIT 5
+                """
+                
+                search_pattern = f"%{query}%"
+                results = await conn.fetch(search_query, search_pattern)
+                
+                if results:
+                    response_parts = []
+                    for row in results:
+                        title = row.get('title', '')
+                        content = row.get('content', '') or row.get('description', '')
+                        if title and content:
+                            response_parts.append(f"• {title}: {content[:200]}")
+                    
+                    if response_parts:
+                        response = "\n\n".join(response_parts[:3])
+                        
+                        helplines = {
+                            'en': "\n\n📞 For more help: Call 104/102 helpline",
+                            'hi': "\n\n📞 अधिक सहायता के लिए: 104/102 हेल्पलाइन पर कॉल करें",
+                            'mr': "\n\n📞 अधिक मदतीसाठी: 104/102 हेल्पलाइन वर कॉल करा"
+                        }
+                        
+                        return response + helplines.get(language, helplines['en'])
+                
+                # No results found
+                no_results = {
+                    'en': "Sorry, I couldn't find specific information. Please try rephrasing your question or contact 104/102 helpline.",
+                    'hi': "क्षमा करें, मुझे विशिष्ट जानकारी नहीं मिली। कृपया प्रश्न दोबारा पूछें या 104/102 हेल्पलाइन से संपर्क करें।",
+                    'mr': "क्षमा करा, मला विशिष्ट माहिती सापडली नाही. कृपया प्रश्न पुन्हा विचारा किंवा 104/102 हेल्पलाइन शी संपर्क करा."
                 }
-                return answer + helplines.get(language, helplines['en'])
+                return no_results.get(language, no_results['en'])
+                
+        except Exception as e:
+            logger.error(f"Database search error: {e}")
+            return "Technical issue occurred. Please try again or contact 104/102 helpline."
+    
+    async def query_with_sql_agent(self, query: str, language: str) -> str:
+        """Use SQL agent for complex queries"""
+        try:
+            if not self.sql_agent:
+                return await self.query_database_simple(query, language)
             
-    except Exception as e:
-        print(f"Ollama error: {e}")
+            # Execute query with SQL agent
+            graph_config = {"configurable": {"thread_id": "1"}}
+            result = self.sql_agent.invoke({"messages": query}, config=graph_config)
+            
+            response = result["messages"][-1].content
+            
+            # Ensure response isn't too long for WhatsApp
+            if len(response) > 1000:
+                response = response[:900] + "..."
+            
+            # Add helpline
+            helplines = {
+                'en': "\n\n📞 For more help: Call 104/102 helpline",
+                'hi': "\n\n📞 अधिक सहायता के लिए: 104/102 हेल्पलाइन पर कॉल करें",
+                'mr': "\n\n📞 अधिक मदतीसाठी: 104/102 हेल्पलाइन वर कॉल करा"
+            }
+            
+            return response + helplines.get(language, helplines['en'])
+            
+        except Exception as e:
+            logger.error(f"SQL Agent error: {e}")
+            return await self.query_database_simple(query, language)
     
-    # Fallback
-    responses = {
-        'en': "Unable to process your request. Please contact 104/102 helpline for assistance.",
-        'hi': "आपका अनुरोध संसाधित नहीं कर सकते। सहायता के लिए कृपया 104/102 हेल्पलाइन से संपर्क करें।",
-        'mr': "तुमची विनंती प्रक्रिया करू शकत नाही. मदतीसाठी कृपया 104/102 हेल्पलाइन शी संपर्क साधा."
-    }
-    return responses.get(language, responses['en'])
-
-def get_response(query: str) -> str:
-    """Main response function"""
-    # Check cache
-    cache_key = hashlib.md5(query.lower().encode()).hexdigest()
-    if cache_key in cache:
-        return cache[cache_key]
-    
-    # Detect language
-    language = detect_language(query)
-    print(f"Query: '{query}' | Language: {language}")
-    
-    # Handle greetings
-    if any(word in query.lower() for word in ['hi', 'hello', 'namaste', 'नमस्ते', 'नमस्कार']):
-        responses = {
-            'en': "Hello! I can help with government schemes. What would you like to know?\n\n**For more details, please contact the 104/102 helpline numbers.**",
-            'hi': "नमस्ते! मैं सरकारी योजनाओं की जानकारी दे सकती हूं। आप क्या जानना चाहते हैं?\n\n**अधिक जानकारी के लिए कृपया 104/102 हेल्पलाइन नंबर पर संपर्क करें।**",
-            'mr': "नमस्कार! मी सरकारी योजनांची माहिती देऊ शकते. तुम्हाला काय जाणून घ्यायचे आहे?\n\n**अधिक माहितीसाठी, कृपया 104/102 हेल्पलाइन क्रमांकावर संपर्क साधा.**"
-        }
-        response = responses.get(language, responses['en'])
-        cache[cache_key] = response
-        return response
-    
-    # Search knowledge base
-    response = search_knowledge_base(query, language)
-    cache[cache_key] = response
-    return response
-
-def send_whatsapp_message(to: str, message: str) -> bool:
-    """Send WhatsApp message"""
-    try:
-        headers = {'Authorization': f'Bearer {WHATSAPP_TOKEN}', 'Content-Type': 'application/json'}
-        payload = {"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": message}}
-        url = f"https://graph.facebook.com/v12.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+    async def generate_response(self, user_message: str) -> str:
+        """Generate AI response based on message type"""
+        language = self.detect_language(user_message)
         
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        return response.status_code == 200
-    except:
-        return False
+        # Handle greetings
+        if self.is_greeting(user_message):
+            return self.get_greeting_response(language)
+        
+        # Handle data queries with SQL agent for complex queries
+        if self.is_data_query(user_message) and len(user_message.split()) > 5:
+            return await self.query_with_sql_agent(user_message, language)
+        
+        # Handle simple queries with direct database search
+        return await self.query_database_simple(user_message, language)
+    
+    def send_whatsapp_message(self, phone_number: str, message: str) -> bool:
+        """Send message via WhatsApp Business API"""
+        try:
+            url = f"https://graph.facebook.com/v17.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+            
+            headers = {
+                'Authorization': f'Bearer {WHATSAPP_TOKEN}',
+                'Content-Type': 'application/json'
+            }
+            
+            data = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {"body": message}
+            }
+            
+            response = requests.post(url, headers=headers, json=data, timeout=10)
+            return response.status_code == 200
+            
+        except Exception as e:
+            logger.error(f"WhatsApp send error: {e}")
+            return False
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("🚀 Starting Simple WhatsApp Bot...")
-    yield
-    print("🛑 Shutting down...")
+# Initialize bot
+bot = WhatsAppAIBot()
 
-app = FastAPI(title="Simple WhatsApp Bot", lifespan=lifespan)
-
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-
-class QueryRequest(BaseModel):
-    input_text: str
+@app.on_event("startup")
+async def startup():
+    """Initialize database connection and SQL agent on startup"""
+    await bot.connect_database()
+    logger.info("🚀 WhatsApp AI Bot with SQL capabilities started successfully!")
 
 @app.get("/")
 async def root():
+    """Health check endpoint"""
     return {
-        "message": "Simple WhatsApp Bot",
-        "model": MODEL_NAME,
-        "knowledge_base_size": len(KNOWLEDGE_BASE)
+        "status": "active",
+        "message": "WhatsApp AI Bot with SQL capabilities is running",
+        "database": "connected" if bot.db_pool else "disconnected",
+        "sql_agent": "active" if bot.sql_agent else "inactive"
     }
 
-@app.post("/upload/")
-async def upload_files(pdf_file: Optional[UploadFile] = File(None), txt_file: Optional[UploadFile] = File(None)):
-    """Upload files to knowledge base"""
-    global KNOWLEDGE_BASE
-    
-    if not pdf_file and not txt_file:
-        raise HTTPException(status_code=400, detail="Upload at least one file")
-
-    # Process PDF
-    if pdf_file:
-        pdf_bytes = await pdf_file.read()
-        try:
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text()
-            KNOWLEDGE_BASE.append({"filename": pdf_file.filename, "content": text})
-            print(f"✅ PDF processed: {pdf_file.filename}")
-        except Exception as e:
-            print(f"❌ PDF error: {e}")
-
-    # Process TXT
-    if txt_file:
-        txt_bytes = await txt_file.read()
-        try:
-            text = txt_bytes.decode('utf-8')
-            KNOWLEDGE_BASE.append({"filename": txt_file.filename, "content": text})
-            print(f"✅ TXT processed: {txt_file.filename}")
-        except Exception as e:
-            print(f"❌ TXT error: {e}")
-
-    return {"message": "Files uploaded", "knowledge_base_size": len(KNOWLEDGE_BASE)}
-
-@app.post("/query/")
-async def query_endpoint(req: QueryRequest):
-    """Query endpoint"""
-    response = get_response(req.input_text)
-    return {"query": req.input_text, "response": response, "language": detect_language(req.input_text)}
-
 @app.get("/webhook")
-async def verify_whatsapp(request: Request):
-    """WhatsApp verification"""
+async def verify_webhook(request: Request):
+    """Verify WhatsApp webhook"""
     params = dict(request.query_params)
-    if params.get("hub.mode") == "subscribe" and params.get("hub.verify_token") == WHATSAPP_VERIFY_TOKEN:
+    
+    if (params.get("hub.mode") == "subscribe" and 
+        params.get("hub.verify_token") == WHATSAPP_VERIFY_TOKEN):
         return int(params.get("hub.challenge"))
+    
     return JSONResponse(status_code=403, content={"error": "Verification failed"})
 
 @app.post("/webhook")
-async def receive_whatsapp_message(request: Request):
-    """Handle WhatsApp messages"""
-    global PROCESSED_MESSAGES
+async def handle_whatsapp_message(request: Request):
+    """Handle incoming WhatsApp messages"""
+    global processed_messages
     
     try:
         data = await request.json()
         
-        if not data.get("entry") or not data["entry"][0].get("changes"):
-            return {"status": "ok"}
+        # Extract message data
+        if not data.get("entry"):
+            return {"status": "no_entry"}
         
-        messages = data["entry"][0]["changes"][0].get("value", {}).get("messages")
+        changes = data["entry"][0].get("changes", [])
+        if not changes:
+            return {"status": "no_changes"}
+        
+        messages = changes[0].get("value", {}).get("messages", [])
         if not messages:
-            return {"status": "ok"}
+            return {"status": "no_messages"}
         
-        message_obj = messages[0]
-        if message_obj.get("type") != "text":
-            return {"status": "ok"}
+        message = messages[0]
         
-        user_number = message_obj.get("from")
-        message_id = message_obj.get("id")
-        user_msg = message_obj.get("text", {}).get("body", "").strip()
+        # Only process text messages
+        if message.get("type") != "text":
+            return {"status": "not_text"}
         
-        # Skip duplicates and own messages
-        if message_id in PROCESSED_MESSAGES or user_number == WHATSAPP_PHONE_NUMBER_ID:
+        # Extract message details
+        phone_number = message.get("from")
+        message_id = message.get("id")
+        text = message.get("text", {}).get("body", "").strip()
+        
+        # Avoid processing duplicate messages
+        if message_id in processed_messages:
             return {"status": "duplicate"}
         
-        if user_msg:
-            print(f"📝 Processing: '{user_msg}'")
-            PROCESSED_MESSAGES.add(message_id)
-            
-            # Keep only recent messages
-            if len(PROCESSED_MESSAGES) > 100:
-                PROCESSED_MESSAGES = set(list(PROCESSED_MESSAGES)[-50:])
-            
-            # Generate and send response
-            response = get_response(user_msg)
-            success = send_whatsapp_message(user_number, response)
-            
-            return {"status": "processed", "send_success": success}
+        processed_messages.add(message_id)
         
-        return {"status": "ok"}
+        # Keep memory usage low
+        if len(processed_messages) > 1000:
+            processed_messages = set(list(processed_messages)[-500:])
+        
+        if text and phone_number:
+            logger.info(f"📨 Received: '{text}' from {phone_number}")
+            
+            # Generate AI response
+            ai_response = await bot.generate_response(text)
+            
+            # Send response
+            success = bot.send_whatsapp_message(phone_number, ai_response)
+            
+            if success:
+                logger.info(f"✅ Sent response to {phone_number}")
+                return {"status": "success", "message_sent": True}
+            else:
+                logger.error(f"❌ Failed to send response to {phone_number}")
+                return {"status": "send_failed"}
+        
+        return {"status": "processed"}
         
     except Exception as e:
-        print(f"❌ Webhook error: {e}")
+        logger.error(f"Webhook error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.get("/test/{query}")
-async def test_query(query: str):
-    """Test any query"""
-    language = detect_language(query)
-    response = get_response(query)
-    return {
-        "query": query,
-        "detected_language": language,
-        "response": response,
-        "knowledge_base_size": len(KNOWLEDGE_BASE)
-    }
+@app.post("/test")
+async def test_bot(request: Request):
+    """Test the bot with a sample message"""
+    try:
+        data = await request.json()
+        test_message = data.get("message", "Hello")
+        
+        response = await bot.generate_response(test_message)
+        
+        return {
+            "test_message": test_message,
+            "bot_response": response,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "status": "failed"}
 
-@app.get("/debug/kb")
-async def debug_knowledge_base():
-    """Debug knowledge base"""
-    return {
-        "total_documents": len(KNOWLEDGE_BASE),
-        "documents": [
-            {
-                "filename": doc.get("filename", "unknown"),
-                "content_length": len(doc.get("content", "")),
-                "preview": doc.get("content", "")[:200] + "..."
-            }
-            for doc in KNOWLEDGE_BASE
-        ]
-    }
-
+# Run the app
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Starting Simple WhatsApp Bot...")
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    print("🚀 Starting WhatsApp AI Bot with SQL capabilities...")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
