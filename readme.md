@@ -3,7 +3,6 @@
 This project sets up a PostgreSQL server and pgAdmin using Docker Compose.  
 It also demonstrates how to load a `.pgsql` file into the database and view the data using pgAdmin.
 
----
 
 ## Project Structure
 
@@ -15,15 +14,13 @@ JJM-WSSD_Whatsapp/
 └── README.md            
 ```
 
----
-
 ## Requirements
 
 - [Docker](https://www.docker.com/)
 - [Docker Compose](https://docs.docker.com/compose/)
 - VS Code Dev Containers Tool
 
----
+
 
 ## Step 1: Setup Environment Variables
 
@@ -38,7 +35,7 @@ PGADMIN_DEFAULT_EMAIL=admin@example.com
 PGADMIN_DEFAULT_PASSWORD=admin
 ```
 
----
+
 
 ## Step 2: Docker Compose Configuration
 
@@ -74,8 +71,6 @@ volumes:
   postgres_data:
 ```
 
----
-
 ## Step 3: Start Containers
 
 To start everything:
@@ -91,8 +86,6 @@ docker-compose down -v
 docker-compose up -d
 ```
 
----
-
 ## Step 4: Access pgAdmin
 
 Open your browser and go to:  
@@ -103,7 +96,6 @@ Login using:
 - **Email:** admin@example.com  
 - **Password:** admin
 
----
 
 ## Step 5: Connect to PostgreSQL in pgAdmin
 
@@ -123,7 +115,6 @@ Click **Save**.
 
 You should now see the `wssd` database under this server.
 
----
 
 ## Step 6: Import .pgsql File
 
@@ -143,7 +134,6 @@ psql -U admin -d wssd -f /jjm-ai_11082025.pgsql
 3. Copy the contents of your `.pgsql` file and paste it in
 4. Click the **Execute ▶️** button
 
----
 
 ## Step 7: View Tables/Data in pgAdmin
 
@@ -151,7 +141,7 @@ psql -U admin -d wssd -f /jjm-ai_11082025.pgsql
    `Servers → Postgres DB → Databases → wssd → Schemas → public → Tables`
 2. Right-click any table → **View/Edit Data → All Rows**
 
----
+
 
 ## Cleanup
 
@@ -160,9 +150,3 @@ To stop and remove containers and associated data:
 ```sh
 docker-compose down -v
 ```
-
----
-
-## License
-
-MIT License — use freely for learning or development.
