@@ -46,7 +46,7 @@ class EnhancedSQLQA:
             self.db.run("SELECT 1")
             logger.info("✅ Database connection established")
         except Exception as e:
-            logger.error(f"❌ Database initialization failed: {e}")
+            logger.error(f"Database initialization failed: {e}")
             raise ConnectionError(f"Failed to connect to database: {e}")
     
     def _initialize_llm(self):
@@ -74,65 +74,60 @@ class EnhancedSQLQA:
     def _setup_prompts(self):
         """Set up custom prompts for SQL generation and interpretation."""
         
-        # Enhanced SQL generation prompt
+        # Clean SQL generation prompt
         self.sql_prompt = PromptTemplate(
             input_variables=["question", "table_info", "database_type", "schema_name"],
-            template="""You are an expert PostgreSQL query generator. Create a precise SQL query to answer the user's question.
+            template="""Generate a PostgreSQL query for the Water Supply and Sanitation Department database.
 
-DATABASE INFORMATION:
-- Database Type: {database_type}
-- Schema: {schema_name}
-- Available Tables and Columns:
+Available tables and columns:
 {table_info}
 
-USER QUESTION: {question}
+User question: {question}
 
-CRITICAL REQUIREMENTS:
-1. Generate ONLY a SELECT query - no INSERT, UPDATE, DELETE, DROP, or other modifying operations
-2. Use proper PostgreSQL syntax and functions
-3. Only reference tables and columns that exist in the provided schema
-4. Use appropriate JOINs when querying multiple tables
-5. Apply proper WHERE clauses, GROUP BY, ORDER BY, and HAVING as needed
-6. Use PostgreSQL-specific functions when beneficial (string_agg, extract, etc.)
-7. Always include a LIMIT clause with maximum {max_results} rows
-8. For date/time queries, use PostgreSQL date functions
-9. Handle NULL values appropriately
-10. If the question cannot be answered with available data, return exactly: "NO_QUERY_POSSIBLE"
+Rules:
+1. Return ONLY the SQL query, no explanations
+2. Use only SELECT statements
+3. Use actual table/column names from the schema
+4. Include LIMIT 100
+5. If exploring structure, use information_schema
 
-EXAMPLES OF GOOD QUERIES:
-- SELECT COUNT(*) FROM users LIMIT {max_results};
-- SELECT name, email FROM customers WHERE city = 'New York' ORDER BY name LIMIT {max_results};
-- SELECT category, AVG(price) as avg_price FROM products GROUP BY category ORDER BY avg_price DESC LIMIT {max_results};
+Examples:
+Question: "What tables do we have?"
+Answer: SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name LIMIT 100
 
-Return ONLY the SQL query without any explanation, comments, or markdown formatting:""".replace("{max_results}", str(settings.MAX_QUERY_RESULTS))
+Question: "What are the district names?"
+Answer: SELECT DISTINCT district_name FROM districts LIMIT 100
+
+Question: "Tell me about blocks"
+Answer: SELECT * FROM blocks LIMIT 10
+
+SQL query only:"""
         )
         
-        # Enhanced interpretation prompt
+        # Chatbot-style interpretation prompt  
         self.interpret_prompt = PromptTemplate(
             input_variables=["question", "sql_result", "sql_query", "row_count"],
-            template="""Provide a clear, comprehensive answer to the user's question based on the query results.
+            template="""You are a friendly AI assistant for the Water Supply and Sanitation Department. Respond naturally like you're having a conversation.
 
-ORIGINAL QUESTION: {question}
-SQL QUERY EXECUTED: {sql_query}
-QUERY RESULTS: {sql_result}
-NUMBER OF ROWS: {row_count}
+User asked: {question}
+Data found: {sql_result}
+Number of records: {row_count}
 
-INSTRUCTIONS:
-1. Provide a direct, natural language answer that addresses the user's question
-2. Include specific numbers, names, and details from the results
-3. If no data was found, clearly explain this and suggest possible reasons
-4. For numerical results, provide context (e.g., "This represents X% of total")
-5. For lists or tables, summarize key patterns or insights
-6. Keep the answer concise but informative (2-4 sentences)
-7. Do not mention the SQL query or technical details in your response
-8. Use business-friendly language that non-technical users can understand
+Important: Don't mention SQL, databases, or technical details. Just talk about the information like you personally looked it up.
 
-EXAMPLES:
-- If asked about count: "There are 1,250 customers in the database."
-- If asked about trends: "Sales have increased by 15% compared to last month, with the highest growth in the electronics category."
-- If no results: "No customers were found matching those criteria. This might be because the filters were too specific or the data for that time period isn't available."
+Response style:
+- Be conversational and helpful
+- Use "I found...", "Looking at your data...", "Here's what I see..."
+- Focus only on the actual information
+- Suggest related questions they might ask
+- Be encouraging and friendly
 
-Natural Language Answer:"""
+Examples:
+- If found district names: "I found several districts in your system: Mumbai, Pune, Nashik, and 12 others. These represent the main administrative areas you're managing. Would you like to know more about any specific district?"
+- If found table info: "I can help you with information about citizens, complaints, water connections, and administrative areas. What would you like to explore?"
+- If no data: "I didn't find any records for that. The information might be stored differently. What specific details are you looking for?"
+
+Your friendly response:"""
         )
         
         # Create LLM chains
@@ -147,7 +142,7 @@ Natural Language Answer:"""
         use_safety: bool = True,
         limit_results: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Process a natural language question and return structured results."""
+        """Process a natural language question and return chatbot-style results."""
         start_time = time.time()
         
         try:
@@ -155,11 +150,11 @@ Natural Language Answer:"""
             if not question.strip():
                 raise ValueError("Question cannot be empty")
             
-            # Get database schema
-            table_info = self._get_formatted_table_info()
+            # Get database schema (simplified for AI)
+            table_info = self._get_simplified_table_info()
             
             # Generate SQL query
-            logger.info(f"Generating SQL for question: {question[:100]}...")
+            logger.info(f"Processing question: {question[:100]}...")
             
             sql_response = await asyncio.to_thread(
                 self.sql_chain.run,
@@ -183,25 +178,25 @@ Natural Language Answer:"""
                 validation_result = {"is_safe": is_safe, "message": validation_message}
                 
                 if not is_safe:
-                    return self._create_error_response(
-                        question, sql_query, f"Security validation failed: {validation_message}", 
-                        start_time, validation_result
+                    return self._create_chatbot_response(
+                        question, sql_query, "I'm sorry, I can't process that request for security reasons. Could you try asking in a different way?", 
+                        start_time, validation_result, 0
                     )
             
             # Execute SQL query
             try:
-                logger.info("Executing SQL query...")
+                logger.info("Fetching data...")
                 result = self.db.run(sql_query)
                 row_count = len(result) if isinstance(result, list) else 1 if result else 0
-                logger.info(f"Query executed successfully, {row_count} rows returned")
+                logger.info(f"Data retrieved successfully, {row_count} rows found")
             except Exception as e:
-                return self._create_error_response(
-                    question, sql_query, f"SQL execution error: {str(e)}", 
-                    start_time, validation_result
+                return self._create_chatbot_response(
+                    question, sql_query, "I'm having trouble finding that information right now. Could you try asking about something else?", 
+                    start_time, validation_result, 0
                 )
             
-            # Interpret results
-            logger.info("Interpreting query results...")
+            # Generate chatbot-style response
+            logger.info("Creating response...")
             interpretation = await asyncio.to_thread(
                 self.interpret_chain.run,
                 question=question,
@@ -212,28 +207,82 @@ Natural Language Answer:"""
             
             execution_time = time.time() - start_time
             
-            return {
-                "question": question,
-                "sql_query": sql_query,
-                "result": result,
-                "interpretation": interpretation.strip(),
-                "execution_time": execution_time,
-                "is_safe": validation_result["is_safe"],
-                "validation_message": validation_result["message"],
-                "row_count": row_count,
-                "timestamp": datetime.now()
-            }
+            return self._create_chatbot_response(
+                question, sql_query, interpretation.strip(), 
+                start_time, validation_result, row_count, result
+            )
             
         except Exception as e:
             logger.error(f"Error processing question: {e}")
-            return self._create_error_response(
-                question, "", f"Processing error: {str(e)}", 
-                start_time, {"is_safe": False, "message": str(e)}
+            return self._create_chatbot_response(
+                question, "", "I'm sorry, I encountered an issue while looking up that information. Could you try asking something else?", 
+                start_time, {"is_safe": False, "message": str(e)}, 0
             )
     
+    def _create_chatbot_response(
+        self, 
+        question: str, 
+        sql_query: str, 
+        interpretation: str, 
+        start_time: float, 
+        validation_result: Dict[str, Any],
+        row_count: int,
+        result: Any = None
+    ) -> Dict[str, Any]:
+        """Create chatbot-style response that hides technical details."""
+        return {
+            "question": question,
+            "sql_query": sql_query,  # Keep for debugging, but hide in UI
+            "result": result,
+            "interpretation": interpretation,
+            "execution_time": time.time() - start_time,
+            "is_safe": validation_result["is_safe"],
+            "validation_message": validation_result["message"],
+            "row_count": row_count,
+            "timestamp": datetime.now()
+        }
+    
+    def _get_simplified_table_info(self) -> str:
+        """Get simplified table information for the AI (no overwhelming details)."""
+        try:
+            tables = self.get_table_info()
+            if not tables:
+                return "Database tables available for queries."
+            
+            # Create a simple summary for the AI
+            table_summary = []
+            for table in tables:
+                cols = [col.name for col in table.columns[:5]]  # Only first 5 columns
+                table_summary.append(f"Table {table.table_name}: {', '.join(cols)}")
+            
+            return "\n".join(table_summary[:10])  # Only first 10 tables
+        except Exception as e:
+            logger.error(f"Error getting simplified table info: {e}")
+            return "Database available for queries."
+    
     def _clean_sql_query(self, sql_response: str) -> str:
-        """Clean and format SQL query from LLM response."""
-        sql_query = sql_response.strip()
+        """Clean and extract SQL query from the response."""
+        if not sql_response:
+            return ""
+        
+        lines = sql_response.split('\n')
+        sql_lines = []
+        found_sql = False
+        sql_query = ""  # Initialize with empty string
+        
+        for line in lines:
+            line = line.strip()
+            # Skip empty lines and explanatory text
+            if not line or line.startswith('Since') or line.startswith('To ') or line.startswith('Let'):
+                continue
+            # Look for SQL keywords to identify actual SQL
+            if any(keyword in line.upper() for keyword in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'WITH']):
+                found_sql = True
+            if found_sql:
+                sql_lines.append(line)
+        
+        if sql_lines:
+            sql_query = ' '.join(sql_lines)
         
         # Remove markdown formatting
         if sql_query.startswith("```sql"):
@@ -244,10 +293,7 @@ Natural Language Answer:"""
         # Remove comments
         sql_query = re.sub(r'--.*$', '', sql_query, flags=re.MULTILINE)
         
-        # Ensure single statement
-        sql_query = sql_query.split(';')[0].strip()
-        
-        return sql_query
+        return sql_query.strip()  # Return the cleaned query or empty string
     
     def _apply_result_limit(self, sql_query: str, limit: int) -> str:
         """Apply or modify LIMIT clause in SQL query."""
@@ -279,34 +325,55 @@ Natural Language Answer:"""
         }
     
     def _get_formatted_table_info(self) -> str:
-        """Get formatted table information for the LLM prompt."""
+        """Get formatted table information for the LLM prompt with better structure."""
         try:
             tables = self.get_table_info()
+            if not tables:
+                return "No table information available. Use information_schema queries to explore."
+            
             formatted_info = []
             
+            # Add summary first
+            formatted_info.append(f"Database contains {len(tables)} tables:")
+            
             for table in tables:
-                table_section = f"\nTable: {table.schema_name}.{table.table_name}"
-                if table.row_count:
+                table_section = f"\nTable: {table.table_name}"
+                if table.row_count and table.row_count > 0:
                     table_section += f" (approx. {table.row_count:,} rows)"
+                elif table.row_count == 0:
+                    table_section += " (empty table)"
                 
                 columns = []
+                primary_keys = []
+                foreign_keys = []
+                
                 for col in table.columns:
                     col_info = f"  - {col.name}: {col.type}"
                     if col.primary_key:
+                        primary_keys.append(col.name)
                         col_info += " (PK)"
                     if not col.nullable:
                         col_info += " NOT NULL"
                     if col.foreign_key:
+                        foreign_keys.append(f"{col.name} -> {col.foreign_key}")
                         col_info += f" -> {col.foreign_key}"
                     columns.append(col_info)
                 
                 table_section += "\n" + "\n".join(columns)
+                
+                # Add relationship info
+                if foreign_keys:
+                    table_section += f"\n  Foreign Keys: {', '.join(foreign_keys)}"
+                
                 formatted_info.append(table_section)
             
             return "\n".join(formatted_info)
         except Exception as e:
             logger.error(f"Error formatting table info: {e}")
-            return self.db.get_table_info()
+            # Fallback to basic schema exploration
+            return """Use these queries to explore the database:
+- SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
+- SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'table_name';"""
     
     def get_table_info(self) -> List[TableInfo]:
         """Get detailed information about all database tables."""

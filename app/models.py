@@ -7,11 +7,11 @@ from pydantic import BaseModel, Field, validator
 
 class DatabaseConfig(BaseModel):
     """Database connection configuration."""
-    host: str = Field(..., description="Database host")
+    host: str = Field("localhost", description="Database host")
     port: int = Field(5432, ge=1, le=65535, description="Database port")
-    database: str = Field(..., description="Database name")
-    username: str = Field(..., description="Database username")
-    password: str = Field(..., description="Database password")
+    database: str = Field("wssd", description="Database name")
+    username: str = Field("postgres", description="Database username")
+    password: str = Field("root@123", description="Database password")
     schema: str = Field("public", description="Database schema")
 
 

@@ -33,12 +33,57 @@ def get_current_sql_qa_system():
     """Get the current SQL QA system instance."""
     return _sql_qa_system
 
+@router.get("/configure_database")
+async def get_database_config_info():
+    """Get information about database configuration status."""
+    sql_qa_system = get_current_sql_qa_system()
+    
+    if sql_qa_system:
+        try:
+            tables = sql_qa_system.get_table_info()
+            return {
+                "status": "configured",
+                "message": "Database is already configured and working",
+                "database_info": {
+                    "host": settings.POSTGRES_HOST,
+                    "port": settings.POSTGRES_PORT,
+                    "database": settings.POSTGRES_DB,
+                    "schema": settings.DB_SCHEMA,
+                    "tables_count": len(tables),
+                    "uptime_seconds": sql_qa_system.get_uptime()
+                },
+                "instruction": "Use POST method to reconfigure database if needed"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Database configured but error accessing: {str(e)}",
+                "instruction": "Use POST method to reconfigure database"
+            }
+    else:
+        return {
+            "status": "not_configured", 
+            "message": "Database not configured",
+            "instruction": "Use POST method with database credentials to configure",
+            "example_payload": {
+                "host": "localhost",
+                "port": 5432,
+                "database": "wssd", 
+                "username": "postgres",
+                "password": "root@123",
+                "schema": "public"
+            },
+            "note": "Send POST request to this endpoint with the above JSON structure"
+        }
+
 @router.post("/configure_database")
 async def configure_database(config: DatabaseConfig, background_tasks: BackgroundTasks):
     """Configure database connection and initialize SQL QA system."""
     try:
-        # Create database URI
-        database_uri = f"postgresql://{config.username}:{config.password}@{config.host}:{config.port}/{config.database}"
+        # Create database URI with proper URL encoding
+        import urllib.parse
+        encoded_password = urllib.parse.quote_plus(config.password)
+        database_uri = f"postgresql://{config.username}:{encoded_password}@{config.host}:{config.port}/{config.database}"
         
         logger.info(f"Configuring database connection to {config.host}:{config.port}/{config.database}")
         

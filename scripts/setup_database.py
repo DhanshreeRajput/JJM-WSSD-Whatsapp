@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Database setup utility script.
+Database setup utility script - Fixed for current environment.
 Helps test database connections and setup.
 """
 
 import os
 import sys
 import psycopg2
+import urllib.parse
 from psycopg2 import sql
 from sqlalchemy import create_engine, text
 import logging
@@ -14,10 +15,42 @@ import logging
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.config import Settings
+# Try to import settings, fall back to environment variables if it fails
+try:
+    from app.config import Settings
+    use_config_class = True
+except ImportError as e:
+    print(f"⚠️  Could not import Settings class: {e}")
+    print("   Falling back to direct environment variable reading...")
+    use_config_class = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def get_database_config():
+    """Get database configuration from settings or environment."""
+    if use_config_class:
+        try:
+            settings = Settings()
+            return {
+                'host': settings.POSTGRES_HOST,
+                'port': settings.POSTGRES_PORT,
+                'database': settings.POSTGRES_DB,
+                'username': settings.POSTGRES_USER,
+                'password': settings.POSTGRES_PASSWORD
+            }
+        except Exception as e:
+            print(f"⚠️  Error loading settings: {e}")
+            print("   Falling back to environment variables...")
+    
+    # Fallback to direct environment variable reading
+    return {
+        'host': os.getenv('POSTGRES_HOST', 'localhost'),
+        'port': int(os.getenv('POSTGRES_PORT', '5432')),
+        'database': os.getenv('POSTGRES_DB', 'wssd'),
+        'username': os.getenv('POSTGRES_USER', 'postgres'),
+        'password': os.getenv('POSTGRES_PASSWORD', 'root@123')
+    }
 
 def test_connection(host, port, database, username, password):
     """Test PostgreSQL connection."""
@@ -47,7 +80,9 @@ def test_connection(host, port, database, username, password):
 def get_database_info(host, port, database, username, password):
     """Get database information."""
     try:
-        database_uri = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+        # URL encode the password to handle special characters like @
+        encoded_password = urllib.parse.quote_plus(password)
+        database_uri = f"postgresql://{username}:{encoded_password}@{host}:{port}/{database}"
         engine = create_engine(database_uri)
         
         with engine.connect() as conn:
@@ -61,18 +96,20 @@ def get_database_info(host, port, database, username, password):
             table_query = text("""
                 SELECT count(*) as table_count
                 FROM information_schema.tables 
-                WHERE table_schema = 'public';
+                WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
             """)
             table_result = conn.execute(table_query).fetchone()
             
             # Get table list with row counts
             tables_query = text("""
                 SELECT 
-                    schemaname,
-                    tablename,
-                    n_tup_ins - n_tup_del as row_count
-                FROM pg_stat_user_tables
-                ORDER BY row_count DESC;
+                    t.table_name,
+                    COALESCE(c.reltuples::bigint, 0) as estimated_rows
+                FROM information_schema.tables t
+                LEFT JOIN pg_class c ON c.relname = t.table_name
+                WHERE t.table_schema = 'public' 
+                AND t.table_type = 'BASE TABLE'
+                ORDER BY estimated_rows DESC;
             """)
             tables_result = conn.execute(tables_query).fetchall()
             
@@ -81,9 +118,9 @@ def get_database_info(host, port, database, username, password):
         logger.info(f"   Size: {size_result[0]}")
         logger.info(f"   Tables: {table_result[0]}")
         
-        logger.info(f"\n📋 Tables with row counts:")
-        for schema, table, rows in tables_result:
-            logger.info(f"   {schema}.{table}: {rows:,} rows")
+        logger.info(f"\n📋 Tables with estimated row counts:")
+        for table_name, rows in tables_result:
+            logger.info(f"   {table_name}: {rows:,} rows (estimated)")
         
         return True
         
@@ -94,68 +131,88 @@ def get_database_info(host, port, database, username, password):
 def setup_sample_data(host, port, database, username, password):
     """Create sample tables for testing."""
     try:
-        database_uri = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+        # URL encode the password to handle special characters like @
+        encoded_password = urllib.parse.quote_plus(password)
+        database_uri = f"postgresql://{username}:{encoded_password}@{host}:{port}/{database}"
         engine = create_engine(database_uri)
         
         sample_sql = """
-        -- Create sample tables for testing
-        CREATE TABLE IF NOT EXISTS customers (
-            customer_id SERIAL PRIMARY KEY,
+        -- Create sample tables for testing WSSD SQL QA System
+        CREATE TABLE IF NOT EXISTS water_connections (
+            connection_id SERIAL PRIMARY KEY,
+            consumer_name VARCHAR(100) NOT NULL,
+            address TEXT,
+            area VARCHAR(50),
+            connection_type VARCHAR(20) DEFAULT 'domestic',
+            connection_date DATE DEFAULT CURRENT_DATE,
+            status VARCHAR(20) DEFAULT 'active',
+            monthly_charge DECIMAL(10,2)
+        );
+        
+        CREATE TABLE IF NOT EXISTS complaints (
+            complaint_id SERIAL PRIMARY KEY,
+            connection_id INTEGER REFERENCES water_connections(connection_id),
+            complaint_type VARCHAR(50),
+            description TEXT,
+            complaint_date DATE DEFAULT CURRENT_DATE,
+            status VARCHAR(20) DEFAULT 'pending',
+            resolved_date DATE,
+            assigned_staff VARCHAR(100)
+        );
+        
+        CREATE TABLE IF NOT EXISTS staff (
+            staff_id SERIAL PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
-            email VARCHAR(100) UNIQUE NOT NULL,
-            city VARCHAR(50),
-            registration_date DATE DEFAULT CURRENT_DATE,
-            is_active BOOLEAN DEFAULT TRUE
+            designation VARCHAR(50),
+            department VARCHAR(50),
+            contact_number VARCHAR(15),
+            area_assigned VARCHAR(50),
+            joining_date DATE DEFAULT CURRENT_DATE
         );
         
-        CREATE TABLE IF NOT EXISTS products (
-            product_id SERIAL PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            category VARCHAR(50),
-            price DECIMAL(10,2),
-            stock_quantity INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS projects (
+            project_id SERIAL PRIMARY KEY,
+            project_name VARCHAR(200) NOT NULL,
+            area VARCHAR(50),
+            project_type VARCHAR(50),
+            budget DECIMAL(15,2),
+            start_date DATE,
+            expected_completion DATE,
+            status VARCHAR(20) DEFAULT 'planned',
+            contractor_name VARCHAR(100)
         );
         
-        CREATE TABLE IF NOT EXISTS orders (
-            order_id SERIAL PRIMARY KEY,
-            customer_id INTEGER REFERENCES customers(customer_id),
-            order_date DATE DEFAULT CURRENT_DATE,
-            total_amount DECIMAL(10,2),
-            status VARCHAR(20) DEFAULT 'pending'
-        );
+        -- Insert sample data for WSSD
+        INSERT INTO water_connections (consumer_name, address, area, connection_type, monthly_charge) VALUES
+        ('Ramesh Kumar', '123 Gandhi Nagar', 'Pune Central', 'domestic', 250.00),
+        ('Sunita Patil', '456 Shivaji Road', 'Pimpri', 'domestic', 300.00),
+        ('Maharashtra Hotel', '789 Main Street', 'Pune Central', 'commercial', 1500.00),
+        ('Amit Sharma', '321 Nehru Colony', 'Chinchwad', 'domestic', 275.00),
+        ('Green Industries', '654 Industrial Area', 'Bhosari', 'industrial', 5000.00)
+        ON CONFLICT (connection_id) DO NOTHING;
         
-        CREATE TABLE IF NOT EXISTS order_items (
-            item_id SERIAL PRIMARY KEY,
-            order_id INTEGER REFERENCES orders(order_id),
-            product_id INTEGER REFERENCES products(product_id),
-            quantity INTEGER NOT NULL,
-            unit_price DECIMAL(10,2)
-        );
-        
-        -- Insert sample data
-        INSERT INTO customers (name, email, city) VALUES
-        ('John Doe', 'john@example.com', 'New York'),
-        ('Jane Smith', 'jane@example.com', 'Los Angeles'),
-        ('Bob Johnson', 'bob@example.com', 'Chicago'),
-        ('Alice Brown', 'alice@example.com', 'Houston'),
-        ('Charlie Wilson', 'charlie@example.com', 'Phoenix')
-        ON CONFLICT (email) DO NOTHING;
-        
-        INSERT INTO products (name, category, price, stock_quantity) VALUES
-        ('Laptop', 'Electronics', 999.99, 50),
-        ('Mouse', 'Electronics', 29.99, 200),
-        ('Keyboard', 'Electronics', 79.99, 150),
-        ('Monitor', 'Electronics', 299.99, 75),
-        ('Headphones', 'Electronics', 149.99, 100)
+        INSERT INTO complaints (connection_id, complaint_type, description, status) VALUES
+        (1, 'Water Quality', 'Water is not clear', 'pending'),
+        (2, 'Low Pressure', 'Very low water pressure in morning', 'resolved'),
+        (3, 'Billing Issue', 'Incorrect bill amount', 'in_progress'),
+        (4, 'No Water Supply', 'No water for 3 days', 'pending'),
+        (1, 'Leakage', 'Pipeline leakage near house', 'resolved')
         ON CONFLICT DO NOTHING;
         
-        INSERT INTO orders (customer_id, total_amount, status) VALUES
-        (1, 1099.98, 'completed'),
-        (2, 29.99, 'completed'),
-        (3, 379.98, 'pending'),
-        (4, 149.99, 'completed'),
-        (5, 109.98, 'shipped')
+        INSERT INTO staff (name, designation, department, contact_number, area_assigned) VALUES
+        ('Suresh Jadhav', 'Engineer', 'Water Supply', '9876543210', 'Pune Central'),
+        ('Priya Deshmukh', 'Assistant Engineer', 'Quality Control', '9876543211', 'Pimpri'),
+        ('Ravi Patil', 'Technician', 'Maintenance', '9876543212', 'Chinchwad'),
+        ('Meera Kulkarni', 'Manager', 'Customer Service', '9876543213', 'All Areas'),
+        ('Ganesh More', 'Inspector', 'Water Quality', '9876543214', 'Bhosari')
+        ON CONFLICT DO NOTHING;
+        
+        INSERT INTO projects (project_name, area, project_type, budget, status, contractor_name) VALUES
+        ('New Pipeline Installation', 'Pune Central', 'Infrastructure', 5000000.00, 'ongoing', 'ABC Contractors'),
+        ('Water Quality Testing Lab', 'Pimpri', 'Facility', 2000000.00, 'completed', 'XYZ Builders'),
+        ('Smart Water Meters', 'Chinchwad', 'Technology', 3000000.00, 'planned', 'Tech Solutions Pvt Ltd'),
+        ('Sewage Treatment Plant', 'Bhosari', 'Treatment', 15000000.00, 'ongoing', 'Green Solutions Ltd'),
+        ('Customer Service Center', 'All Areas', 'Service', 1000000.00, 'completed', 'Modern Builders')
         ON CONFLICT DO NOTHING;
         """
         
@@ -163,7 +220,7 @@ def setup_sample_data(host, port, database, username, password):
             conn.execute(text(sample_sql))
             conn.commit()
         
-        logger.info("✅ Sample data created successfully!")
+        logger.info("✅ Sample WSSD data created successfully!")
         return True
         
     except Exception as e:
@@ -172,57 +229,34 @@ def setup_sample_data(host, port, database, username, password):
 
 def main():
     """Main setup function."""
-    print("🔧 Database Setup Utility")
+    print("🔧 WSSD Database Setup Utility")
+    print("=" * 50)
+    print("🏢 Water Supply and Sanitation Department")
+    print("🏛️  Government of Maharashtra")
     print("=" * 50)
     
     # Get configuration
     try:
-        settings = Settings()
-        if settings.DB_NAME:
-            print(f"Using configuration from .env file:")
-            print(f"  Host: {settings.DB_HOST}")
-            print(f"  Port: {settings.DB_PORT}")
-            print(f"  Database: {settings.DB_NAME}")
-            print(f"  User: {settings.DB_USER}")
-            
-            host = settings.DB_HOST
-            port = settings.DB_PORT
-            database = settings.DB_NAME
-            username = settings.DB_USER
-            password = settings.DB_PASSWORD
-        else:
-            print("No configuration found in .env file")
-            print("Please enter database connection details:")
-            
-            host = input("Host (localhost): ") or "localhost"
-            port = int(input("Port (5432): ") or "5432")
-            database = input("Database name: ")
-            username = input("Username: ")
-            password = input("Password: ")
-    
+        config = get_database_config()
+        print(f"Using database configuration:")
+        print(f"  Host: {config['host']}")
+        print(f"  Port: {config['port']}")
+        print(f"  Database: {config['database']}")
+        print(f"  User: {config['username']}")
     except Exception as e:
         print(f"Configuration error: {e}")
         return
     
     print("\n🔍 Testing connection...")
-    if not test_connection(host, port, database, username, password):
+    if not test_connection(**config):
         print("❌ Cannot proceed without valid database connection")
+        print("\n💡 Check your .env file or environment variables:")
+        print("   POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD")
         return
     
     print("\n📊 Getting database information...")
-    get_database_info(host, port, database, username, password)
-    
-    # Ask if user wants to create sample data
-    create_sample = input("\n❓ Create sample data for testing? (y/N): ").lower().startswith('y')
-    if create_sample:
-        print("\n🔨 Creating sample data...")
-        setup_sample_data(host, port, database, username, password)
-    
-    print("\n✅ Setup complete!")
-    print("\nNext steps:")
-    print("1. Configure your .env file with the database credentials")
-    print("2. Run: python run.py")
-    print("3. Open: http://localhost:8000")
-
-if __name__ == "__main__":
-    main()
+    if get_database_info(**config):
+        print("\n✅ Database connection and info retrieval successful!")
+    else:
+        print("\n❌ Failed to get database information")
+        return
