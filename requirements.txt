@@ -9,8 +9,8 @@ sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 
 # LangChain dependencies
-langchain==0.0.352
-langchain-community==0.0.38
+langchain<=0.0.352
+langchain-community<=0.0.38
 
 # Web interface dependencies
 jinja2==3.1.2

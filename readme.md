@@ -1,4 +1,5 @@
-# PostgreSQL + pgAdmin Setup via Docker
+# SQL Question-Answering System
+## PostgreSQL + pgAdmin Setup via Docker
 
 This project sets up a PostgreSQL server and pgAdmin using Docker Compose.  
 It also demonstrates how to load a `.pgsql` file into the database and view the data using pgAdmin.
@@ -150,8 +151,9 @@ To stop and remove containers and associated data:
 ```sh
 docker-compose down -v
 ```
-# SQL Question-Answering System
-
+---
+---
+## SQL Agent
 A production-ready FastAPI application that allows users to ask natural language questions about PostgreSQL databases using Ollama's Llama 3.1 8B model.
 
 ## 🚀 Features
@@ -185,7 +187,7 @@ A production-ready FastAPI application that allows users to ask natural language
 
 2. **Clone and Setup**:
    ```bash
-   git clone <repository-url>
+   git clone 
    cd sql_qa_system
    
    # Install Python dependencies
