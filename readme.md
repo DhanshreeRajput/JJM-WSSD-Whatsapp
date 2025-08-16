@@ -8,7 +8,7 @@ It also demonstrates how to load a `.pgsql` file into the database and view the 
 ## Project Structure
 
 ```
-JJM-WSSD_Whatsapp/
+JJM-postgres_Whatsapp/
 ├── .env                 # Environment variables
 ├── docker-compose.yml   # Docker Compose config
 ├── jjm-ai_11082025.pgsql# SQL script to import
@@ -30,7 +30,7 @@ Create a `.env` file in the root directory with the following content:
 ```
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=root@123
-POSTGRES_DB=wssd
+POSTGRES_DB=postgres
 
 PGADMIN_DEFAULT_EMAIL=admin@example.com
 PGADMIN_DEFAULT_PASSWORD=admin
@@ -114,7 +114,7 @@ After logging in to pgAdmin, register a new server using:
 
 Click **Save**.
 
-You should now see the `wssd` database under this server.
+You should now see the `postgres` database under this server.
 
 
 ## Step 6: Import .pgsql File
@@ -124,13 +124,13 @@ You should now see the `wssd` database under this server.
 ```sh
 docker cp jjm-ai_11082025.pgsql pg_container:/jjm-ai_11082025.pgsql
 docker exec -it pg_container bash
-psql -U admin -d wssd -f /jjm-ai_11082025.pgsql
+psql -U admin -d postgres -f /jjm-ai_11082025.pgsql
 ```
 
 **Option B – Using pgAdmin GUI:**
 
 1. In the pgAdmin browser, navigate to:  
-   `Servers → Postgres DB → Databases → wssd`
+   `Servers → Postgres DB → Databases → postgres`
 2. Right-click on the database and open **Query Tool**
 3. Copy the contents of your `.pgsql` file and paste it in
 4. Click the **Execute ▶️** button
@@ -139,7 +139,7 @@ psql -U admin -d wssd -f /jjm-ai_11082025.pgsql
 ## Step 7: View Tables/Data in pgAdmin
 
 1. Expand:  
-   `Servers → Postgres DB → Databases → wssd → Schemas → public → Tables`
+   `Servers → Postgres DB → Databases → postgres → Schemas → public → Tables`
 2. Right-click any table → **View/Edit Data → All Rows**
 
 
