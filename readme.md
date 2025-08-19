@@ -9,11 +9,58 @@ It also demonstrates how to load a `.pgsql` file into the database and view the 
 
 ```
 JJM-postgres_Whatsapp/
-├── .env                 # Environment variables
-├── docker-compose.yml   # Docker Compose config
-├── jjm-ai_11082025.pgsql# SQL script to import
-├── relevant_tables.txt  # The useful tables for our agentic workflow 
-└── README.md            
+.
+├── app
+│   ├── __init__.py
+│   ├── config.py
+│   ├── dependencies.py
+│   ├── main.py
+│   ├── models.py
+│   ├── api
+│   │   ├── __init__.py
+│   │   ├── middleware.py
+│   │   └── routes.py
+│   ├── core
+│   │   ├── __init__.py
+│   │   ├── database.py
+│   │   ├── security.py
+│   │   └── sql_qa.py
+│   ├── static
+│   │   ├── favicon.ico
+│   │   ├── css
+│   │   │   └── style.css
+│   │   └── js
+│   │       └── app.js
+│   └── templates
+│       └── index.html
+├── docker
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── docs
+│   ├── API.md
+│   ├── DEPLOYMENT.md
+│   └── USAGE.md
+├── scripts
+│   ├── migrate_data.py
+│   ├── setup_database.py
+│   └── test_connection.py
+├── tests
+│   ├── __init__.py
+│   ├── conftest.py
+│   ├── test_api.py
+│   └── test_sql_qa.py
+└── utils
+|    ├── __init__.py
+|    └── config.py
+|     ├── fastapp.py
+├── fetch_tables.py
+├── readme.md
+├── relevant_tables.txt
+├── requirements.txt
+├── run.py
+├── setup.py
+├── sql_agent_architecture.png
+├── table_names.txt      
 ```
 
 ## Requirements
