@@ -12,6 +12,7 @@ JJM-postgres_Whatsapp/
 ├── .env                 # Environment variables
 ├── docker-compose.yml   # Docker Compose config
 ├── jjm-ai_11082025.pgsql# SQL script to import
+├── relevant_tables.txt  # The useful tables for our agentic workflow 
 └── README.md            
 ```
 
