@@ -20,6 +20,7 @@ class QuestionRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=1000, description="Natural language question")
     use_safety: bool = Field(True, description="Enable safety validation")
     limit_results: Optional[int] = Field(None, ge=1, le=1000, description="Maximum number of results")
+    response_style: str = Field("brief", description="Response style: brief, normal, detailed")
     
     @validator('question')
     def validate_question(cls, v):
@@ -27,6 +28,14 @@ class QuestionRequest(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("Question cannot be empty")
+        return v
+    
+    @validator('response_style')
+    def validate_response_style(cls, v):
+        """Validate response style."""
+        allowed_styles = ["brief", "normal", "detailed"]
+        if v not in allowed_styles:
+            raise ValueError(f"Response style must be one of: {allowed_styles}")
         return v
 
 
@@ -41,6 +50,7 @@ class QueryResponse(BaseModel):
     validation_message: Optional[str] = Field(None, description="Validation details")
     timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
     row_count: Optional[int] = Field(None, description="Number of rows returned")
+    response_style: str = Field("brief", description="Response style used")
 
 
 class ColumnInfo(BaseModel):
@@ -106,6 +116,7 @@ class BatchQuestionRequest(BaseModel):
     """Batch question request model."""
     questions: List[str] = Field(..., min_items=1, max_items=10, description="List of questions")
     use_safety: bool = Field(True, description="Enable safety validation")
+    response_style: str = Field("brief", description="Response style: brief, normal, detailed")
     
     @validator('questions')
     def validate_questions(cls, v):
@@ -119,6 +130,14 @@ class BatchQuestionRequest(BaseModel):
                 raise ValueError("Questions must be less than 1000 characters")
             validated.append(question)
         return validated
+    
+    @validator('response_style')
+    def validate_response_style(cls, v):
+        """Validate response style."""
+        allowed_styles = ["brief", "normal", "detailed"]
+        if v not in allowed_styles:
+            raise ValueError(f"Response style must be one of: {allowed_styles}")
+        return v
 
 
 class BatchQueryResponse(BaseModel):
