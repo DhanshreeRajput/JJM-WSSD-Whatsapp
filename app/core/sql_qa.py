@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime
 
 from sqlalchemy import create_engine, text, inspect
-from langchain.sql_database import SQLDatabase
+from langchain_community.utilities import SQLDatabase  # Fixed import
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain_community.llms import Ollama

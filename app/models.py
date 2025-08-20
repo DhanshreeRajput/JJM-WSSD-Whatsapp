@@ -12,7 +12,7 @@ class DatabaseConfig(BaseModel):
     database: str = Field("wssd", description="Database name")
     username: str = Field("postgres", description="Database username")
     password: str = Field("root@123", description="Database password")
-    schema: str = Field("public", description="Database schema")
+    db_schema: str = Field("public", description="Database schema")  # Fixed: changed from 'schema'
 
 
 class QuestionRequest(BaseModel):
@@ -51,6 +51,7 @@ class QueryResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
     row_count: Optional[int] = Field(None, description="Number of rows returned")
     response_style: str = Field("brief", description="Response style used")
+    current_agent: str = Field("unknown", description="Agent that processed the query")
 
 
 class ColumnInfo(BaseModel):
@@ -79,7 +80,8 @@ class HealthCheck(BaseModel):
     ollama_status: str = Field(..., description="Ollama LLM status")
     timestamp: datetime = Field(default_factory=datetime.now, description="Health check timestamp")
     uptime: Optional[float] = Field(None, description="System uptime in seconds")
-    version: str = Field("1.0.0", description="Application version")
+    version: str = Field("3.0.0", description="Application version")
+    system_type: str = Field("LangGraph Multi-Agent", description="System type")
 
 
 class ErrorResponse(BaseModel):
@@ -99,6 +101,7 @@ class QueryHistory(BaseModel):
     success: bool = Field(..., description="Whether query was successful")
     timestamp: datetime = Field(..., description="Query timestamp")
     user_ip: Optional[str] = Field(None, description="User IP address")
+    agent_used: str = Field("unknown", description="Agent that processed the query")
 
 
 class SystemStats(BaseModel):
@@ -110,6 +113,7 @@ class SystemStats(BaseModel):
     uptime: float = Field(..., description="System uptime in seconds")
     database_tables: int = Field(..., description="Number of database tables")
     last_query_time: Optional[datetime] = Field(None, description="Last query timestamp")
+    agents_statistics: Dict[str, Any] = Field(default_factory=dict, description="Per-agent statistics")
 
 
 class BatchQuestionRequest(BaseModel):
@@ -147,3 +151,4 @@ class BatchQueryResponse(BaseModel):
     successful_count: int = Field(..., description="Number of successful queries")
     failed_count: int = Field(..., description="Number of failed queries")
     timestamp: datetime = Field(default_factory=datetime.now, description="Batch completion timestamp")
+    agents_used: Dict[str, int] = Field(default_factory=dict, description="Count of queries per agent")
