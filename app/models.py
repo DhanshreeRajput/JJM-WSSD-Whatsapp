@@ -12,7 +12,7 @@ class DatabaseConfig(BaseModel):
     database: str = Field("wssd", description="Database name")
     username: str = Field("postgres", description="Database username")
     password: str = Field("root@123", description="Database password")
-    schema: str = Field("public", description="Database schema")
+    db_schema: str = Field("public", description="Database schema")  # Fixed: changed from 'schema'
 
 
 class QuestionRequest(BaseModel):
@@ -20,6 +20,7 @@ class QuestionRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=1000, description="Natural language question")
     use_safety: bool = Field(True, description="Enable safety validation")
     limit_results: Optional[int] = Field(None, ge=1, le=1000, description="Maximum number of results")
+    response_style: str = Field("brief", description="Response style: brief, normal, detailed")
     
     @validator('question')
     def validate_question(cls, v):
@@ -27,6 +28,14 @@ class QuestionRequest(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("Question cannot be empty")
+        return v
+    
+    @validator('response_style')
+    def validate_response_style(cls, v):
+        """Validate response style."""
+        allowed_styles = ["brief", "normal", "detailed"]
+        if v not in allowed_styles:
+            raise ValueError(f"Response style must be one of: {allowed_styles}")
         return v
 
 
@@ -41,6 +50,8 @@ class QueryResponse(BaseModel):
     validation_message: Optional[str] = Field(None, description="Validation details")
     timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
     row_count: Optional[int] = Field(None, description="Number of rows returned")
+    response_style: str = Field("brief", description="Response style used")
+    current_agent: str = Field("unknown", description="Agent that processed the query")
 
 
 class ColumnInfo(BaseModel):
@@ -69,7 +80,8 @@ class HealthCheck(BaseModel):
     ollama_status: str = Field(..., description="Ollama LLM status")
     timestamp: datetime = Field(default_factory=datetime.now, description="Health check timestamp")
     uptime: Optional[float] = Field(None, description="System uptime in seconds")
-    version: str = Field("1.0.0", description="Application version")
+    version: str = Field("3.0.0", description="Application version")
+    system_type: str = Field("LangGraph Multi-Agent", description="System type")
 
 
 class ErrorResponse(BaseModel):
@@ -89,6 +101,7 @@ class QueryHistory(BaseModel):
     success: bool = Field(..., description="Whether query was successful")
     timestamp: datetime = Field(..., description="Query timestamp")
     user_ip: Optional[str] = Field(None, description="User IP address")
+    agent_used: str = Field("unknown", description="Agent that processed the query")
 
 
 class SystemStats(BaseModel):
@@ -100,12 +113,14 @@ class SystemStats(BaseModel):
     uptime: float = Field(..., description="System uptime in seconds")
     database_tables: int = Field(..., description="Number of database tables")
     last_query_time: Optional[datetime] = Field(None, description="Last query timestamp")
+    agents_statistics: Dict[str, Any] = Field(default_factory=dict, description="Per-agent statistics")
 
 
 class BatchQuestionRequest(BaseModel):
     """Batch question request model."""
     questions: List[str] = Field(..., min_items=1, max_items=10, description="List of questions")
     use_safety: bool = Field(True, description="Enable safety validation")
+    response_style: str = Field("brief", description="Response style: brief, normal, detailed")
     
     @validator('questions')
     def validate_questions(cls, v):
@@ -119,6 +134,14 @@ class BatchQuestionRequest(BaseModel):
                 raise ValueError("Questions must be less than 1000 characters")
             validated.append(question)
         return validated
+    
+    @validator('response_style')
+    def validate_response_style(cls, v):
+        """Validate response style."""
+        allowed_styles = ["brief", "normal", "detailed"]
+        if v not in allowed_styles:
+            raise ValueError(f"Response style must be one of: {allowed_styles}")
+        return v
 
 
 class BatchQueryResponse(BaseModel):
@@ -128,3 +151,4 @@ class BatchQueryResponse(BaseModel):
     successful_count: int = Field(..., description="Number of successful queries")
     failed_count: int = Field(..., description="Number of failed queries")
     timestamp: datetime = Field(default_factory=datetime.now, description="Batch completion timestamp")
+    agents_used: Dict[str, int] = Field(default_factory=dict, description="Count of queries per agent")

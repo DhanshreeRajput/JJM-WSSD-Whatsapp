@@ -1,69 +1,65 @@
-"""API routes for the SQL QA System."""
+"""Updated API routes for LangGraph multi-agent system."""
 
 import logging
 import asyncio
 from typing import List
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 import aiofiles
 
 from app.models import (
     DatabaseConfig, QuestionRequest, QueryResponse, TableInfo, 
     HealthCheck, BatchQuestionRequest, BatchQueryResponse
 )
-from app.core.sql_qa import EnhancedSQLQA
-from app.dependencies import get_sql_qa_system
+from app.core.langgraph_system import LangGraphSQLQA
+from app.dependencies import get_current_langgraph_system, set_langgraph_system
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Global variable to store the SQL QA system
-_sql_qa_system = None
-
-def set_sql_qa_system(system: EnhancedSQLQA):
-    """Set the global SQL QA system instance."""
-    global _sql_qa_system
-    _sql_qa_system = system
-
-def get_current_sql_qa_system():
-    """Get the current SQL QA system instance."""
-    return _sql_qa_system
-
 @router.get("/configure_database")
 async def get_database_config_info():
     """Get information about database configuration status."""
-    sql_qa_system = get_current_sql_qa_system()
+    langgraph_system = get_current_langgraph_system()
     
-    if sql_qa_system:
+    if langgraph_system:
         try:
-            tables = sql_qa_system.get_table_info()
+            tables = langgraph_system.get_table_info()
             return {
                 "status": "configured",
-                "message": "Database is already configured and working",
+                "message": "LangGraph multi-agent system is configured and working",
                 "database_info": {
                     "host": settings.POSTGRES_HOST,
                     "port": settings.POSTGRES_PORT,
                     "database": settings.POSTGRES_DB,
                     "schema": settings.DB_SCHEMA,
                     "tables_count": len(tables),
-                    "uptime_seconds": sql_qa_system.get_uptime()
+                    "uptime_seconds": langgraph_system.get_uptime(),
+                    "system_type": "LangGraph Multi-Agent"
+                },
+                "agents": {
+                    "router": "Routes questions to appropriate specialist agents",
+                    "location": "Handles location and administrative queries",
+                    "user": "Handles user and citizen queries", 
+                    "grievance": "Handles grievance and complaint queries",
+                    "schemes": "Handles government schemes queries",
+                    "tracker": "Handles tracking and status queries"
                 },
                 "instruction": "Use POST method to reconfigure database if needed"
             }
         except Exception as e:
             return {
                 "status": "error",
-                "message": f"Database configured but error accessing: {str(e)}",
+                "message": f"LangGraph system configured but error accessing: {str(e)}",
                 "instruction": "Use POST method to reconfigure database"
             }
     else:
         return {
             "status": "not_configured", 
-            "message": "Database not configured",
+            "message": "LangGraph multi-agent system not configured",
             "instruction": "Use POST method with database credentials to configure",
             "example_payload": {
                 "host": "localhost",
@@ -78,77 +74,79 @@ async def get_database_config_info():
 
 @router.post("/configure_database")
 async def configure_database(config: DatabaseConfig, background_tasks: BackgroundTasks):
-    """Configure database connection and initialize SQL QA system."""
+    """Configure database connection and initialize LangGraph system."""
     try:
         # Create database URI with proper URL encoding
         import urllib.parse
         encoded_password = urllib.parse.quote_plus(config.password)
         database_uri = f"postgresql://{config.username}:{encoded_password}@{config.host}:{config.port}/{config.database}"
         
-        logger.info(f"Configuring database connection to {config.host}:{config.port}/{config.database}")
+        logger.info(f"Configuring LangGraph system for {config.host}:{config.port}/{config.database}")
         
-        # Initialize SQL QA system
-        sql_qa_system = EnhancedSQLQA(database_uri)
-        set_sql_qa_system(sql_qa_system)
+        # Initialize LangGraph SQL QA system
+        langgraph_system = LangGraphSQLQA(database_uri)
+        set_langgraph_system(langgraph_system)
         
         # Get table information to verify connection
-        tables = sql_qa_system.get_table_info()
+        tables = langgraph_system.get_table_info()
         
         # Schedule background health check
-        background_tasks.add_task(log_system_status, sql_qa_system)
+        background_tasks.add_task(log_system_status, langgraph_system)
         
-        logger.info(f"Database configured successfully: {len(tables)} tables found")
+        logger.info(f"LangGraph system configured successfully: {len(tables)} tables found")
         
         return {
-            "message": "Database configured successfully",
+            "message": "LangGraph multi-agent system configured successfully",
             "database": config.database,
             "host": config.host,
             "port": config.port,
             "schema": config.schema,
             "tables_found": len(tables),
-            "table_names": [table.table_name for table in tables[:10]],  # Limit to first 10
+            "table_names": [table.table_name for table in tables[:10]],
             "total_tables": len(tables),
+            "system_type": "LangGraph Multi-Agent",
+            "agents_initialized": ["router", "location", "user", "grievance", "schemes", "tracker"],
             "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Database configuration failed: {e}")
+        logger.error(f"LangGraph system configuration failed: {e}")
         raise HTTPException(
             status_code=400, 
-            detail=f"Database configuration failed: {str(e)}"
+            detail=f"LangGraph system configuration failed: {str(e)}"
         )
 
 @router.post("/ask", response_model=QueryResponse)
 async def ask_question(request: QuestionRequest):
-    """Ask a natural language question about the database."""
-    sql_qa_system = get_current_sql_qa_system()
+    """Ask a natural language question using LangGraph multi-agent system."""
+    langgraph_system = get_current_langgraph_system()
     
-    if sql_qa_system is None:
+    if langgraph_system is None:
         raise HTTPException(
             status_code=503, 
-            detail="Database not configured. Please configure database connection first."
+            detail="LangGraph system not configured. Please configure database connection first."
         )
     
     try:
-        logger.info(f"Processing question: {request.question[:100]}...")
+        logger.info(f"Processing question through LangGraph: {request.question[:100]}...")
         
-        result = await sql_qa_system.answer_question(
+        result = await langgraph_system.answer_question(
             question=request.question,
             use_safety=request.use_safety,
             limit_results=request.limit_results,
-            response_style=request.response_style
+            response_style=getattr(request, 'response_style', 'brief')
         )
         
         # Log query for audit purposes
-        logger.info(f"Query completed - Success: {result['is_safe']}, "
+        logger.info(f"LangGraph query completed - Agent: {result.get('current_agent')}, "
+                   f"Success: {result['is_safe']}, "
                    f"Execution time: {result['execution_time']:.2f}s, "
-                   f"Rows: {result.get('row_count', 0)}, "
-                   f"Style: {result.get('response_style', 'brief')}")
+                   f"Rows: {result.get('row_count', 0)}")
         
         return QueryResponse(**result)
         
     except Exception as e:
-        logger.error(f"Error processing question: {e}")
+        logger.error(f"Error processing question through LangGraph: {e}")
         raise HTTPException(
             status_code=500, 
             detail=f"Error processing question: {str(e)}"
@@ -156,13 +154,13 @@ async def ask_question(request: QuestionRequest):
 
 @router.post("/ask_batch", response_model=BatchQueryResponse)
 async def ask_batch_questions(request: BatchQuestionRequest):
-    """Process multiple questions in batch."""
-    sql_qa_system = get_current_sql_qa_system()
+    """Process multiple questions in batch using LangGraph."""
+    langgraph_system = get_current_langgraph_system()
     
-    if sql_qa_system is None:
+    if langgraph_system is None:
         raise HTTPException(
             status_code=503, 
-            detail="Database not configured. Please configure database connection first."
+            detail="LangGraph system not configured. Please configure database connection first."
         )
     
     try:
@@ -171,18 +169,18 @@ async def ask_batch_questions(request: BatchQuestionRequest):
         successful_count = 0
         failed_count = 0
         
-        logger.info(f"Processing batch of {len(request.questions)} questions")
+        logger.info(f"Processing batch of {len(request.questions)} questions through LangGraph")
         
         # Process questions concurrently with limited concurrency
-        semaphore = asyncio.Semaphore(3)  # Limit to 3 concurrent queries
+        semaphore = asyncio.Semaphore(3)
         
         async def process_question(question: str):
             async with semaphore:
                 try:
-                    result = await sql_qa_system.answer_question(
+                    result = await langgraph_system.answer_question(
                         question=question,
                         use_safety=request.use_safety,
-                        response_style=request.response_style
+                        response_style=getattr(request, 'response_style', 'brief')
                     )
                     return QueryResponse(**result)
                 except Exception as e:
@@ -196,7 +194,7 @@ async def ask_batch_questions(request: BatchQuestionRequest):
                         is_safe=False,
                         validation_message=str(e),
                         row_count=0,
-                        response_style=request.response_style
+                        response_style=getattr(request, 'response_style', 'brief')
                     )
         
         # Execute all questions concurrently
@@ -212,7 +210,7 @@ async def ask_batch_questions(request: BatchQuestionRequest):
         
         total_execution_time = (datetime.now() - start_time).total_seconds()
         
-        logger.info(f"Batch processing completed - Success: {successful_count}, "
+        logger.info(f"LangGraph batch processing completed - Success: {successful_count}, "
                    f"Failed: {failed_count}, Total time: {total_execution_time:.2f}s")
         
         return BatchQueryResponse(
@@ -223,7 +221,7 @@ async def ask_batch_questions(request: BatchQuestionRequest):
         )
         
     except Exception as e:
-        logger.error(f"Error processing batch questions: {e}")
+        logger.error(f"Error processing batch questions through LangGraph: {e}")
         raise HTTPException(
             status_code=500, 
             detail=f"Error processing batch questions: {str(e)}"
@@ -232,16 +230,16 @@ async def ask_batch_questions(request: BatchQuestionRequest):
 @router.get("/tables", response_model=List[TableInfo])
 async def get_tables():
     """Get information about all tables in the database."""
-    sql_qa_system = get_current_sql_qa_system()
+    langgraph_system = get_current_langgraph_system()
     
-    if sql_qa_system is None:
+    if langgraph_system is None:
         raise HTTPException(
             status_code=503, 
-            detail="Database not configured. Please configure database connection first."
+            detail="LangGraph system not configured. Please configure database connection first."
         )
     
     try:
-        tables = sql_qa_system.get_table_info()
+        tables = langgraph_system.get_table_info()
         logger.info(f"Retrieved information for {len(tables)} tables")
         return tables
         
@@ -254,8 +252,8 @@ async def get_tables():
 
 @router.get("/health", response_model=HealthCheck)
 async def comprehensive_health_check():
-    """Perform comprehensive health check of all system components."""
-    sql_qa_system = get_current_sql_qa_system()
+    """Perform comprehensive health check of LangGraph system."""
+    langgraph_system = get_current_langgraph_system()
     
     try:
         base_health = HealthCheck(
@@ -264,26 +262,13 @@ async def comprehensive_health_check():
             ollama_status="unknown"
         )
         
-        if sql_qa_system:
-            health_result = await sql_qa_system.health_check()
+        if langgraph_system:
+            health_result = await langgraph_system.health_check()
             
             base_health.database_status = health_result.get("database", "unknown")
-            base_health.ollama_status = health_result.get("llm", "unknown")
+            base_health.ollama_status = health_result.get("agents", "unknown")
             base_health.status = health_result.get("overall", "unknown")
-            base_health.uptime = sql_qa_system.get_uptime()
-        
-        # Test Ollama connection independently if system not configured
-        else:
-            try:
-                from langchain_community.llms import Ollama
-                test_llm = Ollama(
-                    model=settings.OLLAMA_MODEL,
-                    base_url=settings.OLLAMA_BASE_URL
-                )
-                test_response = test_llm.predict("Hello")
-                base_health.ollama_status = "healthy" if test_response else "error"
-            except Exception as e:
-                base_health.ollama_status = f"error: {str(e)}"
+            base_health.uptime = langgraph_system.get_uptime()
         
         return base_health
         
@@ -295,60 +280,17 @@ async def comprehensive_health_check():
             ollama_status="error"
         )
 
-@router.post("/upload_sql_file")
-async def upload_sql_file(file: UploadFile = File(...)):
-    """Upload a .pgsql file for database setup reference."""
-    if not file.filename.endswith(('.sql', '.pgsql')):
-        raise HTTPException(
-            status_code=400, 
-            detail="Only .sql and .pgsql files are allowed"
-        )
-    
-    try:
-        # Create uploads directory if it doesn't exist
-        import os
-        uploads_dir = "uploads"
-        os.makedirs(uploads_dir, exist_ok=True)
-        
-        # Save uploaded file
-        file_path = f"{uploads_dir}/{file.filename}"
-        async with aiofiles.open(file_path, 'wb') as f:
-            content = await file.read()
-            await f.write(content)
-        
-        # Read file content for preview
-        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-            content_preview = await f.read()
-            preview = content_preview[:500] + "..." if len(content_preview) > 500 else content_preview
-        
-        logger.info(f"SQL file uploaded: {file.filename} ({len(content)} bytes)")
-        
-        return {
-            "message": f"SQL file '{file.filename}' uploaded successfully",
-            "filename": file.filename,
-            "size_bytes": len(content),
-            "file_path": file_path,
-            "preview": preview,
-            "note": "File saved for reference. Execute manually in pgAdmin or psql to set up your database."
-        }
-        
-    except Exception as e:
-        logger.error(f"Error uploading file: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error uploading file: {str(e)}"
-        )
-
 @router.get("/system_info")
 async def get_system_info():
-    """Get comprehensive system information."""
-    sql_qa_system = get_current_sql_qa_system()
+    """Get comprehensive LangGraph system information."""
+    langgraph_system = get_current_langgraph_system()
     
     info = {
         "application": {
-            "name": "SQL Question-Answering System",
-            "version": "2.0.0",
-            "timestamp": datetime.now().isoformat()
+            "name": "LangGraph Multi-Agent SQL QA System",
+            "version": "3.0.0",
+            "timestamp": datetime.now().isoformat(),
+            "system_type": "LangGraph Multi-Agent"
         },
         "configuration": {
             "ollama_model": settings.OLLAMA_MODEL,
@@ -357,38 +299,37 @@ async def get_system_info():
             "safety_enabled": settings.ENABLE_SAFETY_BY_DEFAULT,
             "allowed_tables": settings.ALLOWED_TABLES if settings.ALLOWED_TABLES else "all"
         },
-        "database": {
-            "configured": sql_qa_system is not None,
-            "host": settings.DB_HOST if sql_qa_system else "not configured",
-            "port": settings.DB_PORT if sql_qa_system else "not configured",
-            "schema": settings.DB_SCHEMA if sql_qa_system else "not configured"
+        "agents": {
+            "router": "Intelligent question routing and response generation",
+            "location": "Districts, circles, blocks, villages, administrative boundaries",
+            "user": "Citizens, registrations, accounts, user management",
+            "grievance": "Complaints, grievances, issues, resolutions",
+            "schemes": "Government schemes, programs, initiatives",
+            "tracker": "Status tracking, progress monitoring, logs"
         },
-        "response_styles": {
-            "available": ["brief", "normal", "detailed"],
-            "default": "brief",
-            "description": {
-                "brief": "1-2 sentences, key info only",
-                "normal": "2-3 sentences with context", 
-                "detailed": "Full explanation with suggestions"
-            }
+        "database": {
+            "configured": langgraph_system is not None,
+            "host": settings.DB_HOST if langgraph_system else "not configured",
+            "port": settings.DB_PORT if langgraph_system else "not configured",
+            "schema": settings.DB_SCHEMA if langgraph_system else "not configured"
         }
     }
     
-    if sql_qa_system:
+    if langgraph_system:
         try:
-            tables = sql_qa_system.get_table_info()
+            tables = langgraph_system.get_table_info()
             info["database"]["tables_count"] = len(tables)
-            info["database"]["uptime_seconds"] = sql_qa_system.get_uptime()
+            info["database"]["uptime_seconds"] = langgraph_system.get_uptime()
         except Exception as e:
             info["database"]["error"] = str(e)
     
     return info
 
 # Background task for logging system status
-async def log_system_status(sql_qa_system: EnhancedSQLQA):
-    """Log system status in background."""
+async def log_system_status(langgraph_system: LangGraphSQLQA):
+    """Log LangGraph system status in background."""
     try:
-        health = await sql_qa_system.health_check()
-        logger.info(f"System status - Database: {health['database']}, LLM: {health['llm']}")
+        health = await langgraph_system.health_check()
+        logger.info(f"LangGraph system status - Database: {health['database']}, Agents: {health['agents']}")
     except Exception as e:
         logger.error(f"Background health check failed: {e}")
