@@ -24,7 +24,7 @@ load_dotenv()
 # Configuration
 POSTGRES_USER = os.getenv("POSTGRES_USER", "admin")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "root@123")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "wssd")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 

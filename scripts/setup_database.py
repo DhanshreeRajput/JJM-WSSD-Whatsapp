@@ -47,7 +47,7 @@ def get_database_config():
     return {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
         'port': int(os.getenv('POSTGRES_PORT', '5432')),
-        'database': os.getenv('POSTGRES_DB', 'wssd'),
+        'database': os.getenv('POSTGRES_DB', 'postgres'),
         'username': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD', 'root@123')
     }
@@ -137,7 +137,7 @@ def setup_sample_data(host, port, database, username, password):
         engine = create_engine(database_uri)
         
         sample_sql = """
-        -- Create sample tables for testing WSSD SQL QA System
+        -- Create sample tables for testing postgres SQL QA System
         CREATE TABLE IF NOT EXISTS water_connections (
             connection_id SERIAL PRIMARY KEY,
             consumer_name VARCHAR(100) NOT NULL,
@@ -182,7 +182,7 @@ def setup_sample_data(host, port, database, username, password):
             contractor_name VARCHAR(100)
         );
         
-        -- Insert sample data for WSSD
+        -- Insert sample data for postgres
         INSERT INTO water_connections (consumer_name, address, area, connection_type, monthly_charge) VALUES
         ('Ramesh Kumar', '123 Gandhi Nagar', 'Pune Central', 'domestic', 250.00),
         ('Sunita Patil', '456 Shivaji Road', 'Pimpri', 'domestic', 300.00),
@@ -220,7 +220,7 @@ def setup_sample_data(host, port, database, username, password):
             conn.execute(text(sample_sql))
             conn.commit()
         
-        logger.info("✅ Sample WSSD data created successfully!")
+        logger.info("✅ Sample postgres data created successfully!")
         return True
         
     except Exception as e:
@@ -229,7 +229,7 @@ def setup_sample_data(host, port, database, username, password):
 
 def main():
     """Main setup function."""
-    print("🔧 WSSD Database Setup Utility")
+    print("🔧 postgres Database Setup Utility")
     print("=" * 50)
     print("🏢 Water Supply and Sanitation Department")
     print("🏛️  Government of Maharashtra")

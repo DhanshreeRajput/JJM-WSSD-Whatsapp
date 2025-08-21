@@ -7,7 +7,7 @@ jjm-ai_11082025.pgsql
 .env
 .env.local
 .env.*.local
-wssdenv
+postgresenv
 
 # Python
 __pycache__/

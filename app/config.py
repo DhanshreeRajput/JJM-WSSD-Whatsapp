@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Database Configuration (using your existing variables)
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "wssd"
+    POSTGRES_DB: str = "postgres"
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "root@123"
     DB_SCHEMA: str = "public"
@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     DEBUG_MODE: bool = False
-    SECRET_KEY: str = "wssd-sql-qa-secret-key-change-in-production"
+    SECRET_KEY: str = "postgres-sql-qa-secret-key-change-in-production"
     
     # Security Settings
     ENABLE_SAFETY_BY_DEFAULT: bool = True
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "logs/wssd_sql_qa.log"
+    LOG_FILE: str = "logs/postgres_sql_qa.log"
     LOG_MAX_SIZE: int = 10485760  # 10MB
     LOG_BACKUP_COUNT: int = 5
     

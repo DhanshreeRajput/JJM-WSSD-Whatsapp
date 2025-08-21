@@ -68,7 +68,7 @@ async def get_database_config_info():
             "example_payload": {
                 "host": "localhost",
                 "port": 5432,
-                "database": "wssd", 
+                "database": "postgres", 
                 "username": "postgres",
                 "password": "root@123",
                 "schema": "public"
