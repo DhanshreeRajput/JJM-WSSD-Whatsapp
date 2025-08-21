@@ -1,3 +1,4 @@
+#3rd Party API Keys
 """Configuration management for SQL QA System - Fixed for Pydantic v2 and URL encoding."""
 
 import os
