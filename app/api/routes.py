@@ -135,15 +135,13 @@ async def ask_question(request: QuestionRequest):
         result = await sql_qa_system.answer_question(
             question=request.question,
             use_safety=request.use_safety,
-            limit_results=request.limit_results,
-            response_style=request.response_style
+            limit_results=request.limit_results
         )
         
         # Log query for audit purposes
         logger.info(f"Query completed - Success: {result['is_safe']}, "
                    f"Execution time: {result['execution_time']:.2f}s, "
-                   f"Rows: {result.get('row_count', 0)}, "
-                   f"Style: {result.get('response_style', 'brief')}")
+                   f"Rows: {result.get('row_count', 0)}")
         
         return QueryResponse(**result)
         
@@ -181,8 +179,7 @@ async def ask_batch_questions(request: BatchQuestionRequest):
                 try:
                     result = await sql_qa_system.answer_question(
                         question=question,
-                        use_safety=request.use_safety,
-                        response_style=request.response_style
+                        use_safety=request.use_safety
                     )
                     return QueryResponse(**result)
                 except Exception as e:
@@ -195,8 +192,7 @@ async def ask_batch_questions(request: BatchQuestionRequest):
                         execution_time=0.0,
                         is_safe=False,
                         validation_message=str(e),
-                        row_count=0,
-                        response_style=request.response_style
+                        row_count=0
                     )
         
         # Execute all questions concurrently
@@ -362,15 +358,6 @@ async def get_system_info():
             "host": settings.DB_HOST if sql_qa_system else "not configured",
             "port": settings.DB_PORT if sql_qa_system else "not configured",
             "schema": settings.DB_SCHEMA if sql_qa_system else "not configured"
-        },
-        "response_styles": {
-            "available": ["brief", "normal", "detailed"],
-            "default": "brief",
-            "description": {
-                "brief": "1-2 sentences, key info only",
-                "normal": "2-3 sentences with context", 
-                "detailed": "Full explanation with suggestions"
-            }
         }
     }
     

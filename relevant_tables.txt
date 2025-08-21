@@ -1,22 +1,18 @@
-#Grievance Agent
 grievances
+grievance_resolve_tracks
+grievance_resolve_track_logs
+grievance_assigned_accept_reject_users
+users
+citizen_users
 grievance_categories
 sub_grievance_categories
-
-#scheme Agent
 scheme_categories
 scheme_types
 schemes
-
-#Users Agent
-users-----> contains all the locations in id(district_id,circle_id,etc) therefore we need the locations agent with knowledge of the locations and their ids.
-citizen_users
-grievance_users [[grievance_id],[user_id]]
-
-#location Agent
-districts       [[state_id],[district_name],[district_name_mar],[id]]
-divisions        [[state_id],[circle_id],[division_name],[is_active]]
-sub_divisions   [[state_id],[division_id],[division_name],[is_active]]
+states
+districts
+divisions
+sub_divisions
 regions
 region_circles
 circles
@@ -24,8 +20,3 @@ blocks
 villages
 grampanchayats
 habitations
-
-#tracker Agent
-grievance_resolve_tracks 
-grievance_resolve_track_logs
-grievance_assigned_accept_reject_users

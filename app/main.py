@@ -1,4 +1,4 @@
-"""FastAPI application main entry point with LangGraph support."""
+"""FastAPI application main entry point."""
 
 import logging
 import sys
@@ -19,16 +19,19 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings
 from app.api.routes import router
-from app.dependencies import set_langgraph_system
+from app.core.sql_qa import EnhancedSQLQA
 
 # Configure logging
 def setup_logging():
     """Set up application logging."""
+    # Create logs directory if it doesn't exist
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
+    # Configure logging format
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
+    # Set up file and console handlers
     logging.basicConfig(
         level=getattr(logging, settings.LOG_LEVEL),
         format=log_format,
@@ -38,6 +41,7 @@ def setup_logging():
         ]
     )
     
+    # Set specific logger levels
     logging.getLogger("uvicorn").setLevel(logging.INFO)
     logging.getLogger("fastapi").setLevel(logging.INFO)
     logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
@@ -46,13 +50,13 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # Global variables
-langgraph_system = None
+sql_qa_system = None
 app_start_time = datetime.now()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan management for LangGraph system."""
-    logger.info("🚀 Starting LangGraph Multi-Agent SQL QA System...")
+    """Application lifespan management."""
+    logger.info("🚀 Starting SQL QA System...")
     
     # Startup
     try:
@@ -65,32 +69,30 @@ async def lifespan(app: FastAPI):
         test_response = test_llm.predict("Hello")
         logger.info("✅ Ollama connection successful")
         
-        # Initialize LangGraph system if database is configured
+        # Initialize SQL QA system if database is configured
         if all([settings.DB_NAME, settings.DB_USER, settings.DB_PASSWORD]):
-            global langgraph_system
-            from app.core.langgraph_system import LangGraphSQLQA
-            langgraph_system = LangGraphSQLQA()
-            set_langgraph_system(langgraph_system)
-            logger.info("✅ LangGraph multi-agent system pre-initialized")
+            global sql_qa_system
+            sql_qa_system = EnhancedSQLQA()
+            logger.info("✅ SQL QA system pre-initialized")
         else:
-            logger.info("⚠️ Database not configured - manual setup required")
+            logger.info("⚠️  Database not configured - manual setup required")
             
     except Exception as e:
-        logger.warning(f"⚠️ Startup warning: {e}")
+        logger.warning(f"⚠️  Startup warning: {e}")
     
-    logger.info("🎉 LangGraph application startup complete")
+    logger.info("🎉 Application startup complete")
     yield
     
     # Shutdown
-    logger.info("🛑 Shutting down LangGraph SQL QA System...")
+    logger.info("🛑 Shutting down SQL QA System...")
 
 # Create FastAPI application
 app = FastAPI(
-    title="LangGraph Multi-Agent SQL QA System",
-    description="Production-ready natural language interface using LangGraph multi-agent architecture for WSSD",
-    version="3.0.0",
+    title="SQL Question-Answering System",
+    description="Production-ready natural language interface for PostgreSQL databases using Ollama",
+    version="2.0.0",
     docs_url="/docs",
-    redoc_url="/redoc", 
+    redoc_url="/redoc",
     lifespan=lifespan
 )
 
@@ -105,7 +107,7 @@ app.add_middleware(
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"]
+    allowed_hosts=["*"]  # Configure appropriately for production
 )
 
 # Mount static files
@@ -126,57 +128,33 @@ async def get_web_interface():
         with open(html_path, 'r', encoding='utf-8') as f:
             return HTMLResponse(content=f.read())
     else:
-        # Updated fallback interface
+        # Fallback simple interface
         return HTMLResponse(content="""
         <!DOCTYPE html>
         <html>
         <head>
-            <title>LangGraph Multi-Agent SQL QA System</title>
+            <title>SQL QA System</title>
             <style>
                 body { font-family: Arial, sans-serif; margin: 40px; }
                 .container { max-width: 800px; margin: 0 auto; }
                 .header { background: #667eea; color: white; padding: 20px; border-radius: 8px; }
                 .status { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; }
-                .agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }
-                .agent-card { background: white; border: 2px solid #e9ecef; border-radius: 8px; padding: 15px; text-align: center; }
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🤖 LangGraph Multi-Agent SQL QA System</h1>
-                    <p>Intelligent natural language interface with specialized agents for WSSD</p>
+                    <h1>🤖 SQL Question-Answering System</h1>
+                    <p>Natural language interface for PostgreSQL databases</p>
                 </div>
                 
                 <div class="status">
-                    <h2>🎯 Multi-Agent Architecture</h2>
-                    <p>Our system uses specialized agents for different types of queries:</p>
-                    <div class="agent-grid">
-                        <div class="agent-card">
-                            <h3>📍 Location Agent</h3>
-                            <p>Districts, circles, blocks, villages</p>
-                        </div>
-                        <div class="agent-card">
-                            <h3>👥 User Agent</h3>
-                            <p>Citizens, registrations, accounts</p>
-                        </div>
-                        <div class="agent-card">
-                            <h3>📝 Grievance Agent</h3>
-                            <p>Complaints, issues, resolutions</p>
-                        </div>
-                        <div class="agent-card">
-                            <h3>🏛️ Schemes Agent</h3>
-                            <p>Government programs, initiatives</p>
-                        </div>
-                        <div class="agent-card">
-                            <h3>📊 Tracker Agent</h3>
-                            <p>Status updates, progress logs</p>
-                        </div>
-                        <div class="agent-card">
-                            <h3>🎯 Router Agent</h3>
-                            <p>Intelligent question routing</p>
-                        </div>
-                    </div>
+                    <h2>📋 Getting Started</h2>
+                    <ol>
+                        <li>Configure your database connection via the API</li>
+                        <li>Visit <a href="/docs">/docs</a> for interactive API documentation</li>
+                        <li>Use the <code>/api/ask</code> endpoint to ask questions</li>
+                    </ol>
                 </div>
                 
                 <div class="status">
@@ -192,37 +170,45 @@ async def get_web_interface():
         </html>
         """)
 
-# Health check endpoint
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Global exception handler for unhandled errors."""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return HTTPException(
+        status_code=500,
+        detail="An internal server error occurred. Please check the logs."
+    )
+
+# Health check endpoint (also available at root level)
 @app.get("/health")
 async def health_check():
-    """Basic health check endpoint for LangGraph system."""
-    global langgraph_system
+    """Basic health check endpoint."""
+    global sql_qa_system
     
     status = {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "uptime_seconds": (datetime.now() - app_start_time).total_seconds(),
-        "version": "3.0.0",
-        "system_type": "LangGraph Multi-Agent"
+        "version": "2.0.0"
     }
     
-    # Check if LangGraph system is initialized
-    if langgraph_system:
+    # Check if SQL QA system is initialized
+    if sql_qa_system:
         try:
-            health_result = await langgraph_system.health_check()
+            health_result = await sql_qa_system.health_check()
             status.update(health_result)
-            status["agents_initialized"] = ["router", "location", "user", "grievance", "schemes", "tracker"]
         except Exception as e:
             status["status"] = "degraded"
             status["error"] = str(e)
     else:
-        status["langgraph_system"] = "not_configured"
+        status["sql_qa_system"] = "not_configured"
     
     return status
 
 # Development server runner
 if __name__ == "__main__":
-    logger.info(f"Starting LangGraph server on {settings.API_HOST}:{settings.API_PORT}")
+    logger.info(f"Starting server on {settings.API_HOST}:{settings.API_PORT}")
     uvicorn.run(
         "app.main:app",
         host=settings.API_HOST,

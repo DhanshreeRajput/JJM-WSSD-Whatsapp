@@ -8,8 +8,7 @@ jjm-ai_11082025.pgsql
 .env.local
 .env.*.local
 wssdenv
-jssd
-dev.nix
+
 # Python
 __pycache__/
 *.py[cod]
