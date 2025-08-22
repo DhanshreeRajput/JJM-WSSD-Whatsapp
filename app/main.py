@@ -86,9 +86,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="LangGraph Multi-Agent SQL QA System",
-    description="Production-ready natural language interface using LangGraph multi-agent architecture for WSSD",
-    version="3.0.0",
+    title="LangGraph Multi-Agent SQL QA System with SQL-to-NLP",
+    description="Production-ready natural language interface using LangGraph multi-agent architecture for WSSD with SQL-to-NLP conversion capabilities",
+    version="3.1.0",
     docs_url="/docs",
     redoc_url="/redoc", 
     lifespan=lifespan
@@ -176,6 +176,10 @@ async def get_web_interface():
                             <h3>🎯 Router Agent</h3>
                             <p>Intelligent question routing</p>
                         </div>
+                        <div class="agent-card">
+                            <h3>🔄 SQL-to-NLP Agent</h3>
+                            <p>SQL query explanation</p>
+                        </div>
                     </div>
                 </div>
                 
@@ -185,6 +189,14 @@ async def get_web_interface():
                         <li><a href="/docs">📖 API Documentation (Swagger)</a></li>
                         <li><a href="/redoc">📚 API Documentation (ReDoc)</a></li>
                         <li><a href="/api/health">🏥 Health Check</a></li>
+                        <li><a href="/api/system_info">ℹ️ System Information</a></li>
+                    </ul>
+                    
+                    <h3>🆕 SQL-to-NLP Features</h3>
+                    <ul>
+                        <li><strong>POST /api/explain_sql</strong> - Convert SQL query to natural language</li>
+                        <li><strong>POST /api/explain_sql_batch</strong> - Batch SQL to NLP conversion</li>
+                        <li><strong>POST /api/analyze_query</strong> - Detailed SQL query analysis</li>
                     </ul>
                 </div>
             </div>
@@ -202,8 +214,8 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "uptime_seconds": (datetime.now() - app_start_time).total_seconds(),
-        "version": "3.0.0",
-        "system_type": "LangGraph Multi-Agent"
+        "version": "3.1.0",
+        "system_type": "LangGraph Multi-Agent with SQL-to-NLP"
     }
     
     # Check if LangGraph system is initialized
@@ -211,7 +223,7 @@ async def health_check():
         try:
             health_result = await langgraph_system.health_check()
             status.update(health_result)
-            status["agents_initialized"] = ["router", "location", "user", "grievance", "schemes", "tracker"]
+            status["agents_initialized"] = ["router", "location", "user", "grievance", "schemes", "tracker", "sql_to_nlp"]
         except Exception as e:
             status["status"] = "degraded"
             status["error"] = str(e)

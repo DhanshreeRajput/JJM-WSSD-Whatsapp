@@ -1,6 +1,6 @@
 """
 INTEGRATED WHATSAPP AI BOT WITH POSTGRESQL AND OLLAMA
-Combines SQL querying capabilities with WhatsApp messaging
+Combines SQL querying capabilities with WhatsApp messaging and SQL-to-NLP conversion
 """
 
 from fastapi import FastAPI, Request
@@ -49,6 +49,7 @@ class WhatsAppAIBot:
     def __init__(self):
         self.db_pool = None
         self.sql_agent = None
+        self.sql_to_nlp_agent = None  # Add SQL to NLP agent
         
     async def connect_database(self):
         """Connect to PostgreSQL database"""
@@ -59,10 +60,28 @@ class WhatsAppAIBot:
             # Initialize SQL agent with Ollama
             self.initialize_sql_agent()
             logger.info("✅ SQL Agent initialized with Ollama")
+            
+            # Initialize SQL to NLP agent
+            await self.initialize_sql_to_nlp_agent()
+            logger.info("✅ SQL-to-NLP Agent initialized")
         except Exception as e:
             logger.error(f"❌ Database connection failed: {e}")
             raise
     
+    async def initialize_sql_to_nlp_agent(self):
+        """Initialize SQL to NLP agent for query explanation"""
+        try:
+            from app.agents.sql_to_nlp_agent import SQLToNLPAgent
+            from app.core.database import DatabaseManager
+            
+            db_manager = DatabaseManager(DATABASE_URL)
+            self.sql_to_nlp_agent = SQLToNLPAgent(db_manager)
+            
+        except Exception as e:
+            logger.error(f"❌ SQL-to-NLP Agent initialization failed: {e}")
+            # Don't raise error, continue without this feature
+            self.sql_to_nlp_agent = None
+
     def initialize_sql_agent(self):
         """Initialize the SQL agent with Ollama"""
         try:
@@ -102,12 +121,18 @@ class WhatsAppAIBot:
         2. If it's a data query, use SQL to find the answer
         3. Always provide helpful, accurate information
         4. Support Hindi, Marathi, and English languages
+        5. You can also explain SQL queries in natural language when requested
         
         For SQL queries:
         - Only use existing tables and columns
         - Never make assumptions about column names
         - Provide clear, concise answers
         - If data isn't found, suggest alternatives or helplines
+        
+        For SQL explanations:
+        - Convert technical SQL terms to simple language
+        - Focus on what the query accomplishes, not how it works
+        - Use domain-specific terms (citizens, grievances, schemes, districts)
         
         Always end responses with: "📞 For more help: Call 104/102 helpline"
         
@@ -277,6 +302,47 @@ Just ask me anything!""",
             logger.error(f"SQL Agent error: {e}")
             return await self.query_database_simple(query, language)
     
+    async def explain_sql_query(self, sql_query: str, language: str = 'en') -> str:
+        """Explain what a SQL query does in natural language"""
+        try:
+            if not self.sql_to_nlp_agent:
+                return "SQL explanation feature is currently unavailable. Please try again later."
+            
+            result = await self.sql_to_nlp_agent.convert_sql_to_nlp(
+                sql_query=sql_query,
+                context="",
+                include_analysis=False
+            )
+            
+            if not result.get("is_safe", False):
+                return "This SQL query appears to contain unsafe operations and cannot be explained."
+            
+            description = result.get("description", "Unable to explain this query.")
+            
+            # Add helpline based on language
+            helplines = {
+                'en': "\n\n📞 For more help: Call 104/102 helpline",
+                'hi': "\n\n📞 अधिक सहायता के लिए: 104/102 हेल्पलाइन पर कॉल करें",
+                'mr': "\n\n📞 अधिक मदतीसाठी: 104/102 हेल्पलाइन वर कॉल करा"
+            }
+            
+            return description + helplines.get(language, helplines['en'])
+            
+        except Exception as e:
+            logger.error(f"SQL explanation error: {e}")
+            return "I'm having trouble explaining this query. Please try again or contact 104/102 helpline."
+
+    def is_sql_explanation_request(self, text: str) -> bool:
+        """Check if message is requesting SQL explanation"""
+        explanation_keywords = [
+            'explain query', 'what does this query do', 'explain sql',
+            'query explanation', 'sql meaning', 'what is this query',
+            'क्वेरी समझाओ', 'यह क्वेरी क्या करती है', 'sql समझाओ',
+            'explain', 'meaning', 'what does', 'समझाओ', 'अर्थ'
+        ]
+        text_lower = text.lower()
+        return any(keyword in text_lower for keyword in explanation_keywords) and ('select' in text_lower or 'sql' in text_lower)
+
     async def generate_response(self, user_message: str) -> str:
         """Generate AI response based on message type"""
         language = self.detect_language(user_message)
@@ -285,12 +351,41 @@ Just ask me anything!""",
         if self.is_greeting(user_message):
             return self.get_greeting_response(language)
         
+        # Handle SQL explanation requests
+        if self.is_sql_explanation_request(user_message):
+            # Extract SQL query from message (basic extraction)
+            sql_query = self.extract_sql_from_message(user_message)
+            if sql_query:
+                return await self.explain_sql_query(sql_query, language)
+            else:
+                return "Please provide a valid SQL query to explain. Example: 'Explain this query: SELECT * FROM districts'"
+        
         # Handle data queries with SQL agent for complex queries
         if self.is_data_query(user_message) and len(user_message.split()) > 5:
             return await self.query_with_sql_agent(user_message, language)
         
         # Handle simple queries with direct database search
         return await self.query_database_simple(user_message, language)
+    
+    def extract_sql_from_message(self, message: str) -> str:
+        """Extract SQL query from user message"""
+        import re
+        
+        # Look for SQL patterns
+        sql_patterns = [
+            r'select\s+.*?(?:;|$)',
+            r'insert\s+.*?(?:;|$)',
+            r'update\s+.*?(?:;|$)',
+            r'delete\s+.*?(?:;|$)'
+        ]
+        
+        message_lower = message.lower()
+        for pattern in sql_patterns:
+            match = re.search(pattern, message_lower, re.IGNORECASE | re.DOTALL)
+            if match:
+                return match.group(0).rstrip(';').strip()
+        
+        return ""
     
     def send_whatsapp_message(self, phone_number: str, message: str) -> bool:
         """Send message via WhatsApp Business API"""
@@ -330,9 +425,17 @@ async def root():
     """Health check endpoint"""
     return {
         "status": "active",
-        "message": "WhatsApp AI Bot with SQL capabilities is running",
+        "message": "WhatsApp AI Bot with SQL capabilities and SQL-to-NLP conversion",
         "database": "connected" if bot.db_pool else "disconnected",
-        "sql_agent": "active" if bot.sql_agent else "inactive"
+        "sql_agent": "active" if bot.sql_agent else "inactive",
+        "sql_to_nlp_agent": "active" if bot.sql_to_nlp_agent else "inactive",
+        "features": [
+            "Natural language to SQL conversion",
+            "SQL to natural language explanation",
+            "Multi-language support (English, Hindi, Marathi)",
+            "WhatsApp integration",
+            "Government schemes database"
+        ]
     }
 
 @app.get("/webhook")
@@ -426,6 +529,67 @@ async def test_bot(request: Request):
         
     except Exception as e:
         return {"error": str(e), "status": "failed"}
+
+@app.post("/test_sql_to_nlp")
+async def test_sql_to_nlp(request: Request):
+    """Test SQL to NLP conversion functionality"""
+    try:
+        data = await request.json()
+        sql_query = data.get("sql_query", "SELECT * FROM districts LIMIT 10")
+        context = data.get("context", "")
+        include_analysis = data.get("include_analysis", False)
+        
+        if not bot.sql_to_nlp_agent:
+            return {
+                "error": "SQL-to-NLP agent not initialized",
+                "status": "failed",
+                "suggestion": "Please ensure the database is connected properly"
+            }
+        
+        result = await bot.sql_to_nlp_agent.convert_sql_to_nlp(
+            sql_query=sql_query,
+            context=context,
+            include_analysis=include_analysis
+        )
+        
+        return {
+            "test_sql_query": sql_query,
+            "conversion_result": result,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"SQL to NLP test error: {e}")
+        return {"error": str(e), "status": "failed"}
+
+@app.get("/features")
+async def get_available_features():
+    """Get list of available bot features"""
+    features = {
+        "core_features": [
+            "Natural language to SQL conversion",
+            "Multi-language support (English, Hindi, Marathi)",
+            "Government schemes database queries",
+            "WhatsApp integration"
+        ],
+        "new_features": [
+            "SQL to natural language explanation",
+            "Query complexity analysis",
+            "Batch SQL conversion",
+            "Component-level query analysis"
+        ],
+        "agent_status": {
+            "sql_agent": "active" if bot.sql_agent else "inactive",
+            "sql_to_nlp_agent": "active" if bot.sql_to_nlp_agent else "inactive"
+        },
+        "supported_languages": ["en", "hi", "mr"],
+        "test_endpoints": [
+            "POST /test - Test general bot functionality",
+            "POST /test_sql_to_nlp - Test SQL to NLP conversion"
+        ]
+    }
+    
+    return features
 
 # Run the app
 if __name__ == "__main__":

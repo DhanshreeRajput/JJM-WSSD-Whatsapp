@@ -1,11 +1,11 @@
-# LangGraph Multi-Agent SQL Question-Answering System
+# LangGraph Multi-Agent SQL Question-Answering System with SQL-to-NLP
 ## Water Supply and Sanitation Department (WSSD) - Government of Maharashtra
 
-This project provides a production-ready FastAPI application with LangGraph multi-agent architecture that allows users to ask natural language questions about PostgreSQL databases using Ollama's Llama 3.1 8B model.
+This project provides a production-ready FastAPI application with LangGraph multi-agent architecture that allows users to ask natural language questions about PostgreSQL databases using Ollama's Llama 3.1 8B model. **NEW: Now includes SQL-to-NLP conversion capabilities for explaining SQL queries in natural language.**
 
 ## 🎯 Multi-Agent Architecture
 
-The system uses **6 specialized agents** for intelligent query processing:
+The system uses **7 specialized agents** for intelligent query processing:
 
 - **🎯 Router Agent**: Intelligently routes questions to appropriate specialists
 - **📍 Location Agent**: Districts, circles, blocks, villages, administrative boundaries
@@ -13,6 +13,24 @@ The system uses **6 specialized agents** for intelligent query processing:
 - **📝 Grievance Agent**: Complaints, grievances, issues, resolutions
 - **🏛️ Schemes Agent**: Government schemes, programs, initiatives
 - **📊 Tracker Agent**: Status tracking, progress monitoring, logs
+- **🔄 SQL-to-NLP Agent**: **NEW** - Converts SQL queries to natural language descriptions
+
+## 🆕 New SQL-to-NLP Features (v3.1.0)
+
+- **🔄 SQL Query Explanation**: Convert any SQL query to natural language
+- **📊 Query Complexity Analysis**: Assess and explain query complexity levels
+- **🔍 Component Analysis**: Break down SQL queries into understandable parts
+- **📦 Batch Processing**: Convert multiple SQL queries simultaneously
+- **🛡️ Security Validation**: All queries are validated for safety before explanation
+- **🌐 Multi-language Support**: Explanations in English, Hindi, and Marathi
+
+### SQL-to-NLP Use Cases
+
+- **📚 Education**: Help users understand complex SQL queries
+- **📋 Documentation**: Generate human-readable descriptions of database operations
+- **🔍 Audit Trails**: Create readable logs of database operations
+- **🤝 Collaboration**: Bridge technical and non-technical team communication
+- **🛠️ Debugging**: Understand what generated queries actually do
 
 ## Project Structure
 
@@ -81,8 +99,12 @@ JJM-postgres_Whatsapp/
 └── table_names.txt
 ```
 
-## 🚀 New Features (v3.0.0)
+## 🚀 New Features (v3.1.0)
 
+- **🔄 SQL-to-NLP Conversion**: Convert SQL queries to natural language descriptions
+- **📊 Query Analysis**: Detailed breakdown of SQL query components and complexity
+- **🔍 Smart Explanations**: Context-aware explanations using domain knowledge
+- **📦 Batch Conversion**: Process multiple SQL queries simultaneously
 - **🧠 LangGraph Multi-Agent Architecture**: Intelligent question routing
 - **🎯 Specialized Agents**: Domain-specific expertise for better accuracy
 - **📊 Agent Analytics**: Monitor which agent handles each query
@@ -212,6 +234,62 @@ Expected Response:
 ```bash
 curl http://localhost:8000/health
 ```
+
+## 🧪 Testing SQL-to-NLP Functionality
+
+### **Test Script**
+```bash
+# Run the comprehensive test suite
+python3 test_sql_to_nlp.py
+```
+
+### **API Endpoints for SQL-to-NLP**
+
+#### **Single SQL Query Explanation**
+```bash
+curl -X POST "http://localhost:8000/api/explain_sql" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "sql_query": "SELECT district_name, COUNT(*) FROM districts d JOIN grievances g ON d.id = g.district_id GROUP BY district_name",
+       "context": "Analyzing grievances by district",
+       "include_analysis": true,
+       "language": "en"
+     }'
+```
+
+#### **Batch SQL Query Explanation**
+```bash
+curl -X POST "http://localhost:8000/api/explain_sql_batch" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "sql_queries": [
+         "SELECT * FROM districts LIMIT 10",
+         "SELECT COUNT(*) FROM grievances WHERE status = '\''pending'\''",
+         "SELECT scheme_name, description FROM schemes WHERE is_active = true"
+       ],
+       "context": "Batch testing of different query types",
+       "include_analysis": false,
+       "language": "en"
+     }'
+```
+
+#### **Query Component Analysis**
+```bash
+curl -X POST "http://localhost:8000/api/analyze_query" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "sql_query": "SELECT d.district_name, COUNT(g.id) as total FROM districts d LEFT JOIN grievances g ON d.id = g.district_id GROUP BY d.district_name ORDER BY total DESC",
+       "context": "Complex aggregation query analysis"
+     }'
+```
+
+### **Example SQL-to-NLP Conversions**
+
+| SQL Query | Natural Language Description |
+|-----------|------------------------------|
+| `SELECT * FROM districts LIMIT 10` | "This query shows all district information in the system, displaying the first 10 results" |
+| `SELECT COUNT(*) FROM grievances WHERE status = 'pending'` | "This query counts how many grievances are still pending resolution" |
+| `SELECT d.district_name, COUNT(g.id) FROM districts d JOIN grievances g ON d.id = g.district_id GROUP BY d.district_name` | "This query finds district names along with their total grievance counts by linking district and grievance information" |
 
 ## 🧪 Testing Multi-Agent Intelligence
 

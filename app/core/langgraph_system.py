@@ -14,6 +14,7 @@ from app.agents.user_agent import UserAgent
 from app.agents.grievance_agent import GrievanceAgent
 from app.agents.schemes_agent import SchemesAgent
 from app.agents.tracker_agent import TrackerAgent
+from app.agents.sql_to_nlp_agent import SQLToNLPAgent
 from app.core.database import DatabaseManager
 from app.config import settings
 
@@ -236,14 +237,14 @@ class LangGraphSQLQA:
         # Initialize database manager
         self.db_manager = DatabaseManager(self.database_uri)
         
-        # Initialize agents
+        # Initialize agents (including SQL to NLP agent)
         self.agents = self._initialize_agents()
         
         # Create and compile the graph
         self.graph = self._create_graph()
         self.app = self.graph.compile(checkpointer=MemorySaver())
         
-        logger.info("LangGraph SQL QA system initialized successfully")
+        logger.info("LangGraph SQL QA system initialized successfully with SQL-to-NLP capabilities")
     
     def _initialize_agents(self) -> Dict[str, Any]:
         """Initialize all agents."""
@@ -253,10 +254,11 @@ class LangGraphSQLQA:
             "user": UserAgent(self.db_manager),
             "grievance": GrievanceAgent(self.db_manager),
             "schemes": SchemesAgent(self.db_manager),
-            "tracker": TrackerAgent(self.db_manager)
+            "tracker": TrackerAgent(self.db_manager),
+            "sql_to_nlp": SQLToNLPAgent(self.db_manager)  # Add SQL to NLP agent
         }
         
-        logger.info(f"Initialized {len(agents)} agents")
+        logger.info(f"Initialized {len(agents)} agents (including SQL-to-NLP)")
         return agents
     
     def _create_graph(self) -> StateGraph:
@@ -506,6 +508,7 @@ class LangGraphSQLQA:
         health_status = {
             "database": "unknown",
             "agents": "unknown",
+            "sql_to_nlp": "unknown",
             "overall": "unknown"
         }
         
@@ -523,8 +526,16 @@ class LangGraphSQLQA:
         except Exception as e:
             health_status["agents"] = f"error: {str(e)}"
         
+        try:
+            # Check SQL to NLP agent
+            sql_to_nlp_health = await self.agents["sql_to_nlp"].health_check()
+            health_status["sql_to_nlp"] = "healthy" if sql_to_nlp_health else "error"
+        except Exception as e:
+            health_status["sql_to_nlp"] = f"error: {str(e)}"
+        
         # Overall status
-        if all("healthy" in status for status in [health_status["database"], health_status["agents"]]):
+        core_services = [health_status["database"], health_status["agents"]]
+        if all("healthy" in status for status in core_services):
             health_status["overall"] = "healthy"
         else:
             health_status["overall"] = "degraded"
@@ -551,14 +562,61 @@ class LangGraphSQLQA:
                     "user": "Citizens, registrations, accounts, user management",
                     "grievance": "Complaints, grievances, issues, resolutions",
                     "schemes": "Government schemes, programs, initiatives",
-                    "tracker": "Status tracking, progress monitoring, logs"
+                    "tracker": "Status tracking, progress monitoring, logs",
+                    "sql_to_nlp": "SQL query to natural language conversion"
                 },
                 "system_uptime": self.get_uptime(),
-                "last_health_check": datetime.now().isoformat()
+                "last_health_check": datetime.now().isoformat(),
+                "sql_to_nlp_features": {
+                    "conversion": "SQL queries to natural language descriptions",
+                    "analysis": "Query component analysis and complexity assessment",
+                    "batch_processing": "Multiple query conversion support",
+                    "safety_validation": "Security checks for all queries"
+                }
             }
         except Exception as e:
             logger.error(f"Error getting agent statistics: {e}")
             return {"error": str(e)}
+
+    async def convert_sql_to_nlp(
+        self,
+        sql_query: str,
+        context: str = "",
+        include_analysis: bool = False
+    ) -> Dict[str, Any]:
+        """Convert SQL query to natural language using the SQL-to-NLP agent."""
+        try:
+            sql_to_nlp_agent = self.agents["sql_to_nlp"]
+            result = await sql_to_nlp_agent.convert_sql_to_nlp(
+                sql_query=sql_query,
+                context=context,
+                include_analysis=include_analysis
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Error in SQL to NLP conversion: {e}")
+            return {
+                "agent": "sql_to_nlp",
+                "sql_query": sql_query,
+                "description": "Error processing SQL query",
+                "is_safe": False,
+                "analysis": None,
+                "error": str(e)
+            }
+
+    async def batch_convert_sql_to_nlp(
+        self,
+        sql_queries: List[str],
+        context: str = ""
+    ) -> List[Dict[str, Any]]:
+        """Convert multiple SQL queries to natural language descriptions."""
+        try:
+            sql_to_nlp_agent = self.agents["sql_to_nlp"]
+            results = await sql_to_nlp_agent.batch_convert(sql_queries, context)
+            return results
+        except Exception as e:
+            logger.error(f"Error in batch SQL to NLP conversion: {e}")
+            return [{"error": str(e)} for _ in sql_queries]
     
     async def process_batch_questions(
         self,
