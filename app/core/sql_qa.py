@@ -1,4 +1,4 @@
-"""Enhanced SQL Question-Answering engine with custom prompts and safety validation."""
+"""Enhanced SQL Question-Answering engine with custom prompts, safety validation, and SQL-to-NLP conversion."""
 
 import asyncio
 import logging
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class EnhancedSQLQA:
-    """Enhanced SQL Question-Answering system with Ollama integration."""
+    """Enhanced SQL Question-Answering system with Ollama integration and SQL-to-NLP conversion."""
     
     def __init__(self, database_uri: str = None):
         """Initialize the SQL QA system."""
@@ -32,13 +32,74 @@ class EnhancedSQLQA:
         self.startup_time = datetime.now()
         self.table_cache = None
         self.last_cache_update = None
+        self.sql_to_nlp_agent = None  # Add SQL to NLP agent
         
         # Initialize components
         self._initialize_database()
         self._initialize_llm()
         self._setup_prompts()
+        self._initialize_sql_to_nlp_agent()  # Initialize SQL to NLP functionality
         
-        logger.info("Enhanced SQL QA system initialized successfully")
+        logger.info("Enhanced SQL QA system initialized successfully with SQL-to-NLP capabilities")
+
+    def _initialize_sql_to_nlp_agent(self):
+        """Initialize SQL to NLP agent."""
+        try:
+            from app.agents.sql_to_nlp_agent import SQLToNLPAgent
+            from app.core.database import DatabaseManager
+            
+            db_manager = DatabaseManager(self.database_uri)
+            self.sql_to_nlp_agent = SQLToNLPAgent(db_manager)
+            logger.info("✅ SQL to NLP agent initialized in Enhanced SQL QA")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ SQL to NLP agent initialization failed: {e}")
+            self.sql_to_nlp_agent = None
+
+    async def convert_sql_to_nlp(
+        self, 
+        sql_query: str, 
+        context: str = "",
+        include_analysis: bool = False
+    ) -> Dict[str, Any]:
+        """Convert SQL query to natural language description."""
+        if not self.sql_to_nlp_agent:
+            return {
+                "error": "SQL to NLP functionality not available",
+                "description": "SQL to NLP agent not initialized",
+                "is_safe": False
+            }
+        
+        try:
+            result = await self.sql_to_nlp_agent.convert_sql_to_nlp(
+                sql_query=sql_query,
+                context=context,
+                include_analysis=include_analysis
+            )
+            return result
+        except Exception as e:
+            logger.error(f"SQL to NLP conversion error: {e}")
+            return {
+                "error": str(e),
+                "description": "Error converting SQL to natural language",
+                "is_safe": False
+            }
+
+    async def batch_convert_sql_to_nlp(
+        self, 
+        sql_queries: List[str], 
+        context: str = ""
+    ) -> List[Dict[str, Any]]:
+        """Convert multiple SQL queries to natural language descriptions."""
+        if not self.sql_to_nlp_agent:
+            return [{"error": "SQL to NLP functionality not available"} for _ in sql_queries]
+        
+        try:
+            results = await self.sql_to_nlp_agent.batch_convert(sql_queries, context)
+            return results
+        except Exception as e:
+            logger.error(f"Batch SQL to NLP conversion error: {e}")
+            return [{"error": str(e)} for _ in sql_queries]
     
     def _initialize_database(self):
         """Initialize database connection."""
@@ -516,6 +577,7 @@ Your natural response:"""
         health_status = {
             "database": "unknown",
             "llm": "unknown",
+            "sql_to_nlp": "unknown",
             "overall": "unknown"
         }
         
@@ -538,8 +600,20 @@ Your natural response:"""
             health_status["llm"] = f"error: {str(e)}"
             logger.error(f"LLM health check failed: {e}")
         
+        # Check SQL to NLP agent
+        try:
+            if self.sql_to_nlp_agent:
+                sql_to_nlp_health = await self.sql_to_nlp_agent.health_check()
+                health_status["sql_to_nlp"] = "healthy" if sql_to_nlp_health else "error: agent check failed"
+            else:
+                health_status["sql_to_nlp"] = "not_initialized"
+        except Exception as e:
+            health_status["sql_to_nlp"] = f"error: {str(e)}"
+            logger.error(f"SQL to NLP health check failed: {e}")
+        
         # Determine overall status
-        if all("healthy" in status for status in [health_status["database"], health_status["llm"]]):
+        core_services = [health_status["database"], health_status["llm"]]
+        if all("healthy" in status for status in core_services):
             health_status["overall"] = "healthy"
         else:
             health_status["overall"] = "degraded"

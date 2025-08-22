@@ -3,354 +3,249 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WSSD Assistant</title>
+    <title>LangGraph Multi-Agent SQL QA System with SQL-to-NLP</title>
+    <link rel="stylesheet" href="/static/css/style.css">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .sql-to-nlp-section {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 10px;
             padding: 20px;
+            margin: 20px 0;
         }
-        
-        .chat-container { 
+        .feature-highlight {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .sql-input {
             width: 100%;
-            max-width: 800px; 
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            height: 80vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        
-        .chat-header { 
-            background: linear-gradient(135deg, #2c5aa0 0%, #1e3a8a 100%); 
-            color: white; 
-            padding: 1.5rem; 
-            text-align: center;
-        }
-        
-        .chat-header h1 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .chat-messages {
-            flex: 1;
-            padding: 1rem;
-            overflow-y: auto;
-            background: #f8f9fa;
-        }
-        
-        .message {
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-        
-        .message.user {
-            flex-direction: row-reverse;
-        }
-        
-        .message-bubble {
-            max-width: 70%;
-            padding: 1rem;
-            border-radius: 18px;
-            line-height: 1.5;
-        }
-        
-        .message.assistant .message-bubble {
-            background: white;
-            border: 1px solid #e9ecef;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        .message.user .message-bubble {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        
-        .message-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 1.2rem;
-        }
-        
-        .message.assistant .message-avatar {
-            background: linear-gradient(135deg, #2c5aa0 0%, #1e3a8a 100%);
-            color: white;
-        }
-        
-        .message.user .message-avatar {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .chat-input {
-            padding: 1rem;
-            border-top: 1px solid #e9ecef;
-            background: white;
-        }
-        
-        .input-container {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-        
-        .chat-input input {
-            flex: 1;
-            padding: 1rem;
-            border: 1px solid #e9ecef;
-            border-radius: 25px;
-            font-size: 1rem;
-            outline: none;
-        }
-        
-        .chat-input input:focus {
-            border-color: #667eea;
-        }
-        
-        .send-btn {
-            padding: 1rem 1.5rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: transform 0.2s;
-        }
-        
-        .send-btn:hover {
-            transform: translateY(-2px);
-        }
-        
-        .send-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .typing-indicator {
-            display: none;
-            padding: 1rem;
-            font-style: italic;
-            color: #6c757d;
-        }
-        
-        .typing-indicator::after {
-            content: '';
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #667eea;
-            margin-left: 8px;
-            animation: typing 1.5s infinite;
-        }
-        
-        @keyframes typing {
-            0%, 60%, 100% { transform: translateY(0); }
-            30% { transform: translateY(-10px); }
-        }
-        
-        .quick-suggestions {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
-        }
-        
-        .suggestion-btn {
-            padding: 0.5rem 1rem;
-            background: #e9ecef;
-            border: none;
-            border-radius: 15px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.3s;
-        }
-        
-        .suggestion-btn:hover {
-            background: #667eea;
-            color: white;
-        }
-        
-        .welcome-message {
-            text-align: center;
-            padding: 2rem;
-            color: #6c757d;
-        }
-        
-        .stats {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-        }
-        
-        .stat {
-            text-align: center;
-        }
-        
-        .stat-number {
-            font-weight: bold;
-            color: #667eea;
+            height: 120px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            resize: vertical;
         }
     </style>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <h1>🚰 WSSD Assistant</h1>
-            <p>Ask me anything about your water supply and sanitation data</p>
+    <div class="container">
+        <header class="header">
+            <h1>🤖 LangGraph Multi-Agent SQL QA System</h1>
+            <p class="subtitle">With SQL-to-NLP Conversion Capabilities</p>
+            <p>Water Supply and Sanitation Department - Government of Maharashtra</p>
+        </header>
+
+        <div class="feature-highlight">
+            <h2>🆕 New Feature: SQL-to-NLP Conversion</h2>
+            <p>Now you can convert SQL queries to natural language descriptions!</p>
         </div>
-        
-        <div class="chat-messages" id="chatMessages">
-            <div class="welcome-message">
-                <h3>👋 Hi! I'm your WSSD data assistant</h3>
-                <p>I can help you find information about citizens, grievances, administrative data, and more. Just ask me naturally!</p>
-                
-                <div class="quick-suggestions">
-                    <button class="suggestion-btn" onclick="askQuestion('What data do you have?')">What data do you have?</button>
-                    <button class="suggestion-btn" onclick="askQuestion('Tell me about grievances')">Tell me about grievances</button>
-                    <button class="suggestion-btn" onclick="askQuestion('How many citizens are registered?')">How many citizens?</button>
-                    <button class="suggestion-btn" onclick="askQuestion('Show me recent activity')">Recent activity</button>
+
+        <div class="system-status" id="systemStatus">
+            <h2>📊 System Status</h2>
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="status-label">Database:</span>
+                    <span class="status-value" id="dbStatus">Checking...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Ollama LLM:</span>
+                    <span class="status-value" id="ollamaStatus">Checking...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">SQL-to-NLP:</span>
+                    <span class="status-value" id="sqlToNlpStatus">Checking...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Agents:</span>
+                    <span class="status-value" id="agentStatus">Checking...</span>
                 </div>
             </div>
         </div>
-        
-        <div class="typing-indicator" id="typingIndicator">
-            Assistant is thinking...
+
+        <div class="agents-section">
+            <h2>🎯 Specialized Agents</h2>
+            <div class="agents-grid">
+                <div class="agent-card">
+                    <h3>📍 Location Agent</h3>
+                    <p>Districts, circles, blocks, villages, administrative boundaries</p>
+                </div>
+                <div class="agent-card">
+                    <h3>👥 User Agent</h3>
+                    <p>Citizens, registrations, accounts, user management</p>
+                </div>
+                <div class="agent-card">
+                    <h3>📝 Grievance Agent</h3>
+                    <p>Complaints, grievances, issues, resolutions</p>
+                </div>
+                <div class="agent-card">
+                    <h3>🏛️ Schemes Agent</h3>
+                    <p>Government schemes, programs, initiatives</p>
+                </div>
+                <div class="agent-card">
+                    <h3>📊 Tracker Agent</h3>
+                    <p>Status tracking, progress monitoring, logs</p>
+                </div>
+                <div class="agent-card">
+                    <h3>🎯 Router Agent</h3>
+                    <p>Intelligent question routing and response generation</p>
+                </div>
+                <div class="agent-card feature-highlight">
+                    <h3>🔄 SQL-to-NLP Agent</h3>
+                    <p>Converts SQL queries to natural language descriptions</p>
+                </div>
+            </div>
         </div>
-        
-        <div class="chat-input">
-            <div class="input-container">
-                <input type="text" id="messageInput" placeholder="Ask me about your WSSD data..." onkeypress="handleKeyPress(event)">
-                <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+
+        <div class="query-section">
+            <h2>💬 Ask a Question</h2>
+            <div class="input-group">
+                <textarea id="questionInput" placeholder="Ask about districts, schemes, grievances, users, or tracking...">Show me all districts in Maharashtra</textarea>
+                <select id="responseStyle">
+                    <option value="brief">Brief Response</option>
+                    <option value="normal">Normal Response</option>
+                    <option value="detailed">Detailed Response</option>
+                </select>
+                <button onclick="askQuestion()">Ask Question</button>
+            </div>
+        </div>
+
+        <div class="sql-to-nlp-section">
+            <h2>🔄 SQL-to-NLP Converter</h2>
+            <p>Convert SQL queries to natural language descriptions</p>
+            <div class="input-group">
+                <textarea id="sqlInput" class="sql-input" placeholder="Enter your SQL query here...">SELECT district_name, COUNT(*) as total_grievances FROM districts d JOIN grievances g ON d.id = g.district_id WHERE g.status = 'pending' GROUP BY district_name ORDER BY total_grievances DESC LIMIT 10</textarea>
+                <input type="text" id="contextInput" placeholder="Optional context for better explanation..." />
+                <label>
+                    <input type="checkbox" id="includeAnalysis"> Include detailed analysis
+                </label>
+                <button onclick="explainSQL()">Explain SQL Query</button>
+            </div>
+        </div>
+
+        <div class="response-section">
+            <h2>📋 Response</h2>
+            <div id="response" class="response-box">Ask a question or provide a SQL query to see the response here...</div>
+        </div>
+
+        <div class="api-info">
+            <h2>🔗 API Endpoints</h2>
+            <div class="endpoint-list">
+                <div class="endpoint-group">
+                    <h3>Core Functionality</h3>
+                    <ul>
+                        <li><code>POST /api/ask</code> - Ask natural language questions</li>
+                        <li><code>POST /api/ask_batch</code> - Process multiple questions</li>
+                        <li><code>GET /api/tables</code> - Get database schema information</li>
+                        <li><code>GET /api/health</code> - System health check</li>
+                    </ul>
+                </div>
+                <div class="endpoint-group">
+                    <h3>🆕 SQL-to-NLP Features</h3>
+                    <ul>
+                        <li><code>POST /api/explain_sql</code> - Convert SQL query to natural language</li>
+                        <li><code>POST /api/explain_sql_batch</code> - Batch SQL to NLP conversion</li>
+                        <li><code>POST /api/analyze_query</code> - Detailed SQL query analysis</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
 
+    <script src="/static/js/app.js"></script>
     <script>
-        function addMessage(content, isUser = false) {
-            const messagesContainer = document.getElementById('chatMessages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+        // Add SQL-to-NLP functionality
+        async function explainSQL() {
+            const sqlQuery = document.getElementById('sqlInput').value.trim();
+            const context = document.getElementById('contextInput').value.trim();
+            const includeAnalysis = document.getElementById('includeAnalysis').checked;
             
-            messageDiv.innerHTML = `
-                <div class="message-avatar">
-                    ${isUser ? '👤' : '🤖'}
-                </div>
-                <div class="message-bubble">
-                    ${content}
-                </div>
-            `;
-            
-            messagesContainer.appendChild(messageDiv);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-        
-        function showTyping() {
-            document.getElementById('typingIndicator').style.display = 'block';
-            document.getElementById('sendBtn').disabled = true;
-        }
-        
-        function hideTyping() {
-            document.getElementById('typingIndicator').style.display = 'none';
-            document.getElementById('sendBtn').disabled = false;
-        }
-        
-        async function askQuestion(question) {
-            // Clear welcome message if first question
-            const welcomeMsg = document.querySelector('.welcome-message');
-            if (welcomeMsg) {
-                welcomeMsg.style.display = 'none';
+            if (!sqlQuery) {
+                alert('Please enter a SQL query to explain.');
+                return;
             }
             
-            // Add user message
-            addMessage(question, true);
-            
-            // Show typing indicator
-            showTyping();
+            const responseDiv = document.getElementById('response');
+            responseDiv.innerHTML = '<div class="loading">🔄 Converting SQL to natural language...</div>';
             
             try {
-                const response = await fetch('/api/ask', {
+                const response = await fetch('/api/explain_sql', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        question: question, 
-                        use_safety: true 
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sql_query: sqlQuery,
+                        context: context,
+                        include_analysis: includeAnalysis,
+                        language: 'en'
                     })
                 });
                 
                 const result = await response.json();
                 
-                // Hide typing indicator
-                hideTyping();
-                
                 if (response.ok) {
-                    // Only show the interpretation (chatbot response)
-                    addMessage(result.interpretation);
+                    let output = `
+                        <div class="result-success">
+                            <h3>🔄 SQL-to-NLP Conversion Result</h3>
+                            <div class="result-section">
+                                <h4>📝 Natural Language Description:</h4>
+                                <p class="description">${result.description}</p>
+                            </div>
+                            <div class="result-section">
+                                <h4>🔍 Query Details:</h4>
+                                <p><strong>Complexity:</strong> ${result.complexity}</p>
+                                <p><strong>Safety Status:</strong> ${result.is_safe ? '✅ Safe' : '❌ Unsafe'}</p>
+                                <p><strong>Processed by:</strong> ${result.agent} agent</p>
+                            </div>
+                    `;
                     
-                    // Add stats if there's data
-                    if (result.row_count > 0) {
-                        const statsHtml = `
-                            <div class="stats">
-                                <div class="stat">
-                                    <div class="stat-number">${result.row_count}</div>
-                                    <div>records found</div>
-                                </div>
-                                <div class="stat">
-                                    <div class="stat-number">${result.execution_time.toFixed(1)}s</div>
-                                    <div>response time</div>
-                                </div>
+                    if (result.analysis) {
+                        output += `
+                            <div class="result-section">
+                                <h4>📊 Detailed Analysis:</h4>
+                                <pre class="analysis">${result.analysis}</pre>
                             </div>
                         `;
-                        addMessage(statsHtml);
                     }
+                    
+                    output += '</div>';
+                    responseDiv.innerHTML = output;
                 } else {
-                    addMessage("I'm sorry, I couldn't process that request. Could you try asking in a different way?");
+                    responseDiv.innerHTML = `<div class="result-error">❌ Error: ${result.detail || 'Unknown error occurred'}</div>`;
                 }
             } catch (error) {
-                hideTyping();
-                addMessage("I'm having trouble connecting right now. Please try again in a moment.");
+                responseDiv.innerHTML = `<div class="result-error">❌ Network Error: ${error.message}</div>`;
             }
         }
         
-        function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
-            
-            if (message) {
-                askQuestion(message);
-                input.value = '';
+        // Update status check to include SQL-to-NLP
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                const status = await response.json();
+                
+                updateStatusIndicator('dbStatus', status.database || 'unknown');
+                updateStatusIndicator('ollamaStatus', status.llm || status.ollama_status || 'unknown');
+                updateStatusIndicator('sqlToNlpStatus', status.sql_to_nlp || 'unknown');
+                updateStatusIndicator('agentStatus', status.agents || 'unknown');
+                
+            } catch (error) {
+                console.error('Status check failed:', error);
+                updateStatusIndicator('dbStatus', 'error');
+                updateStatusIndicator('ollamaStatus', 'error');
+                updateStatusIndicator('sqlToNlpStatus', 'error');
+                updateStatusIndicator('agentStatus', 'error');
             }
         }
         
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        }
-        
-        // Focus on input when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('messageInput').focus();
-        });
+        // Enhanced status updates for SQL-to-NLP
+        checkSystemStatus();
+        setInterval(checkSystemStatus, 30000); // Check every 30 seconds
     </script>
 </body>
 </html>

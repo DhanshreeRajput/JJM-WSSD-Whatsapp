@@ -39,6 +39,82 @@ class QuestionRequest(BaseModel):
         return v
 
 
+class SQLToNLPRequest(BaseModel):
+    """Request model for SQL to NLP conversion."""
+    sql_query: str = Field(..., min_length=1, max_length=5000, description="SQL query to convert to natural language")
+    context: Optional[str] = Field("", max_length=1000, description="Additional context for better explanation")
+    include_analysis: bool = Field(False, description="Include detailed query analysis")
+    language: str = Field("en", description="Response language: en, hi, mr")
+    
+    @validator('sql_query')
+    def validate_sql_query(cls, v):
+        """Validate SQL query content."""
+        v = v.strip()
+        if not v:
+            raise ValueError("SQL query cannot be empty")
+        return v
+    
+    @validator('language')
+    def validate_language(cls, v):
+        """Validate language code."""
+        allowed_languages = ["en", "hi", "mr"]
+        if v not in allowed_languages:
+            raise ValueError(f"Language must be one of: {allowed_languages}")
+        return v
+
+
+class SQLToNLPResponse(BaseModel):
+    """Response model for SQL to NLP conversion."""
+    sql_query: str = Field(..., description="Original SQL query")
+    description: str = Field(..., description="Natural language description of the query")
+    is_safe: bool = Field(..., description="Whether the query is safe")
+    validation_message: str = Field(..., description="Security validation message")
+    analysis: Optional[Dict[str, Any]] = Field(None, description="Detailed query analysis if requested")
+    complexity: str = Field(..., description="Query complexity level: simple, moderate, complex, very_complex")
+    agent: str = Field("sql_to_nlp", description="Agent that processed the request")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
+    language: str = Field("en", description="Response language")
+
+
+class BatchSQLToNLPRequest(BaseModel):
+    """Request model for batch SQL to NLP conversion."""
+    sql_queries: List[str] = Field(..., min_items=1, max_items=20, description="List of SQL queries to convert")
+    context: Optional[str] = Field("", max_length=1000, description="Additional context for all queries")
+    include_analysis: bool = Field(False, description="Include detailed analysis for all queries")
+    language: str = Field("en", description="Response language: en, hi, mr")
+    
+    @validator('sql_queries')
+    def validate_sql_queries(cls, v):
+        """Validate each SQL query in the batch."""
+        validated = []
+        for query in v:
+            query = query.strip()
+            if not query:
+                raise ValueError("SQL queries cannot be empty")
+            if len(query) > 5000:
+                raise ValueError("SQL queries must be less than 5000 characters")
+            validated.append(query)
+        return validated
+    
+    @validator('language')
+    def validate_language(cls, v):
+        """Validate language code."""
+        allowed_languages = ["en", "hi", "mr"]
+        if v not in allowed_languages:
+            raise ValueError(f"Language must be one of: {allowed_languages}")
+        return v
+
+
+class BatchSQLToNLPResponse(BaseModel):
+    """Response model for batch SQL to NLP conversion."""
+    results: List[SQLToNLPResponse] = Field(..., description="Individual conversion results")
+    total_queries: int = Field(..., description="Total number of queries processed")
+    successful_count: int = Field(..., description="Number of successful conversions")
+    failed_count: int = Field(..., description="Number of failed conversions")
+    total_execution_time: float = Field(..., description="Total batch execution time")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Batch completion timestamp")
+
+
 class QueryResponse(BaseModel):
     """Response model for query results."""
     question: str = Field(..., description="Original question")
@@ -80,8 +156,9 @@ class HealthCheck(BaseModel):
     ollama_status: str = Field(..., description="Ollama LLM status")
     timestamp: datetime = Field(default_factory=datetime.now, description="Health check timestamp")
     uptime: Optional[float] = Field(None, description="System uptime in seconds")
-    version: str = Field("3.0.0", description="Application version")
-    system_type: str = Field("LangGraph Multi-Agent", description="System type")
+    version: str = Field("3.1.0", description="Application version")
+    system_type: str = Field("LangGraph Multi-Agent with SQL-to-NLP", description="System type")
+    sql_to_nlp_status: str = Field("unknown", description="SQL to NLP agent status")
 
 
 class ErrorResponse(BaseModel):
@@ -114,6 +191,7 @@ class SystemStats(BaseModel):
     database_tables: int = Field(..., description="Number of database tables")
     last_query_time: Optional[datetime] = Field(None, description="Last query timestamp")
     agents_statistics: Dict[str, Any] = Field(default_factory=dict, description="Per-agent statistics")
+    sql_to_nlp_stats: Dict[str, Any] = Field(default_factory=dict, description="SQL to NLP conversion statistics")
 
 
 class BatchQuestionRequest(BaseModel):

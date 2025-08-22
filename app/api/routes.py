@@ -11,7 +11,8 @@ import aiofiles
 
 from app.models import (
     DatabaseConfig, QuestionRequest, QueryResponse, TableInfo, 
-    HealthCheck, BatchQuestionRequest, BatchQueryResponse
+    HealthCheck, BatchQuestionRequest, BatchQueryResponse,
+    SQLToNLPRequest, SQLToNLPResponse, BatchSQLToNLPRequest, BatchSQLToNLPResponse
 )
 from app.core.sql_qa import EnhancedSQLQA
 from app.dependencies import get_sql_qa_system
@@ -383,6 +384,190 @@ async def get_system_info():
             info["database"]["error"] = str(e)
     
     return info
+
+@router.post("/explain_sql", response_model=SQLToNLPResponse)
+async def explain_sql_query(request: SQLToNLPRequest):
+    """Convert SQL query to natural language description."""
+    sql_qa_system = get_current_sql_qa_system()
+    
+    if sql_qa_system is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="Database not configured. Please configure database connection first."
+        )
+    
+    try:
+        logger.info(f"Converting SQL to NLP: {request.sql_query[:100]}...")
+        
+        # Get SQL to NLP agent from LangGraph system
+        if hasattr(sql_qa_system, 'sql_to_nlp_agent'):
+            sql_to_nlp_agent = sql_qa_system.sql_to_nlp_agent
+        else:
+            # Initialize SQL to NLP agent if not available
+            from app.agents.sql_to_nlp_agent import SQLToNLPAgent
+            from app.core.database import DatabaseManager
+            
+            db_manager = DatabaseManager(sql_qa_system.database_uri)
+            sql_to_nlp_agent = SQLToNLPAgent(db_manager)
+        
+        result = await sql_to_nlp_agent.convert_sql_to_nlp(
+            sql_query=request.sql_query,
+            context=request.context or "",
+            include_analysis=request.include_analysis
+        )
+        
+        # Log conversion for audit purposes
+        logger.info(f"SQL to NLP conversion completed - Safe: {result['is_safe']}, "
+                   f"Complexity: {result.get('complexity', 'unknown')}")
+        
+        return SQLToNLPResponse(
+            sql_query=result["sql_query"],
+            description=result["description"],
+            is_safe=result["is_safe"],
+            validation_message=result["validation_message"],
+            analysis=result.get("analysis"),
+            complexity=result.get("complexity", "unknown"),
+            agent=result["agent"],
+            language=request.language
+        )
+        
+    except Exception as e:
+        logger.error(f"Error converting SQL to NLP: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error converting SQL to NLP: {str(e)}"
+        )
+
+@router.post("/explain_sql_batch", response_model=BatchSQLToNLPResponse)
+async def explain_sql_queries_batch(request: BatchSQLToNLPRequest):
+    """Convert multiple SQL queries to natural language descriptions."""
+    sql_qa_system = get_current_sql_qa_system()
+    
+    if sql_qa_system is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="Database not configured. Please configure database connection first."
+        )
+    
+    try:
+        start_time = datetime.now()
+        logger.info(f"Processing batch SQL to NLP conversion for {len(request.sql_queries)} queries")
+        
+        # Get or initialize SQL to NLP agent
+        if hasattr(sql_qa_system, 'sql_to_nlp_agent'):
+            sql_to_nlp_agent = sql_qa_system.sql_to_nlp_agent
+        else:
+            from app.agents.sql_to_nlp_agent import SQLToNLPAgent
+            from app.core.database import DatabaseManager
+            
+            db_manager = DatabaseManager(sql_qa_system.database_uri)
+            sql_to_nlp_agent = SQLToNLPAgent(db_manager)
+        
+        # Process batch conversion
+        batch_results = await sql_to_nlp_agent.batch_convert(
+            sql_queries=request.sql_queries,
+            context=request.context or ""
+        )
+        
+        # Convert to response format
+        results = []
+        successful_count = 0
+        failed_count = 0
+        
+        for result in batch_results:
+            if "error" not in result:
+                successful_count += 1
+                results.append(SQLToNLPResponse(
+                    sql_query=result["sql_query"],
+                    description=result["description"],
+                    is_safe=result["is_safe"],
+                    validation_message=result["validation_message"],
+                    analysis=result.get("analysis"),
+                    complexity=result.get("complexity", "unknown"),
+                    agent=result["agent"],
+                    language=request.language
+                ))
+            else:
+                failed_count += 1
+                results.append(SQLToNLPResponse(
+                    sql_query=result.get("sql_query", ""),
+                    description=f"Error: {result['error']}",
+                    is_safe=False,
+                    validation_message=result["error"],
+                    analysis=None,
+                    complexity="unknown",
+                    agent="sql_to_nlp",
+                    language=request.language
+                ))
+        
+        total_execution_time = (datetime.now() - start_time).total_seconds()
+        
+        logger.info(f"Batch SQL to NLP conversion completed - Success: {successful_count}, "
+                   f"Failed: {failed_count}, Total time: {total_execution_time:.2f}s")
+        
+        return BatchSQLToNLPResponse(
+            results=results,
+            total_queries=len(request.sql_queries),
+            successful_count=successful_count,
+            failed_count=failed_count,
+            total_execution_time=total_execution_time
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing batch SQL to NLP: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing batch SQL to NLP: {str(e)}"
+        )
+
+@router.post("/analyze_query")
+async def analyze_query_components(request: SQLToNLPRequest):
+    """Analyze SQL query components and provide detailed explanation."""
+    sql_qa_system = get_current_sql_qa_system()
+    
+    if sql_qa_system is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="Database not configured. Please configure database connection first."
+        )
+    
+    try:
+        logger.info(f"Analyzing SQL query components: {request.sql_query[:100]}...")
+        
+        # Get or initialize SQL to NLP agent
+        if hasattr(sql_qa_system, 'sql_to_nlp_agent'):
+            sql_to_nlp_agent = sql_qa_system.sql_to_nlp_agent
+        else:
+            from app.agents.sql_to_nlp_agent import SQLToNLPAgent
+            from app.core.database import DatabaseManager
+            
+            db_manager = DatabaseManager(sql_qa_system.database_uri)
+            sql_to_nlp_agent = SQLToNLPAgent(db_manager)
+        
+        result = await sql_to_nlp_agent.explain_query_components(request.sql_query)
+        
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        logger.info(f"Query analysis completed - Complexity: {result.get('complexity', 'unknown')}")
+        
+        return {
+            "sql_query": result["sql_query"],
+            "explanation": result["explanation"],
+            "components": result["components"],
+            "complexity": result["complexity"],
+            "agent": result["agent"],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing query: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error analyzing query: {str(e)}"
+        )
 
 # Background task for logging system status
 async def log_system_status(sql_qa_system: EnhancedSQLQA):
